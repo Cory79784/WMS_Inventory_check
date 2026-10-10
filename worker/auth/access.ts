@@ -24,6 +24,19 @@ export async function authenticateRequest(
 
     // Query user and roles from D1
     try {
+      // Bootstrap first user as ADMIN if users table is completely empty
+      const totalUsers = await env.DB.prepare(`SELECT count(*) as count FROM users`).first<{ count: number }>();
+      if (totalUsers && totalUsers.count === 0) {
+        const bootstrapId = `usr_${Date.now()}`;
+        await env.DB.prepare(
+          `INSERT INTO users (user_id, email, name, is_active) VALUES (?, ?, ?, 1)`
+        ).bind(bootstrapId, emailHeader, emailHeader.split('@')[0]).run();
+
+        await env.DB.prepare(
+          `INSERT INTO user_roles (user_id, role) VALUES (?, 'ADMIN'), (?, 'OPERATOR'), (?, 'REVIEWER')`
+        ).bind(bootstrapId, bootstrapId, bootstrapId).run();
+      }
+
       const userRecord = await env.DB.prepare(
         `SELECT user_id, email, employee_id, name, is_active FROM users WHERE email = ?`
       ).bind(emailHeader).first<{
