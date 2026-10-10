@@ -1,0 +1,76 @@
+import { Env } from './types';
+import { handleHealthCheck } from './routes/health';
+import { handleD1Test } from './routes/d1-test';
+import { handleR2Test } from './routes/r2-test';
+import { authenticateRequest } from './auth/access';
+import { handleInventoryRoutes } from './routes/inventory';
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+
+    // Handle CORS preflight for local development
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization, Cf-Access-Jwt-Assertion, Cf-Access-Authenticated-User-Email, X-Dev-User-Email',
+        },
+      });
+    }
+
+    const addCors = (response: Response): Response => {
+      const headers = new Headers(response.headers);
+      headers.set('Access-Control-Allow-Origin', '*');
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
+    };
+
+    // API Routes
+    if (url.pathname.startsWith('/api/')) {
+      if (url.pathname === '/api/health') {
+        const res = await handleHealthCheck(request, env);
+        return addCors(res);
+      }
+
+      if (url.pathname === '/api/d1-test') {
+        const res = await handleD1Test(request, env);
+        return addCors(res);
+      }
+
+      if (url.pathname === '/api/r2-test') {
+        const res = await handleR2Test(request, env);
+        return addCors(res);
+      }
+
+      if (url.pathname === '/api/auth/me') {
+        const auth = await authenticateRequest(request, env);
+        if (!auth.user) {
+          return addCors(Response.json({ authenticated: false, error: auth.error }, { status: 401 }));
+        }
+        return addCors(Response.json({
+          authenticated: true,
+          mode: env.AUTH_MODE || 'development',
+          user: auth.user,
+        }));
+      }
+
+      if (url.pathname.startsWith('/api/inventory/')) {
+        const res = await handleInventoryRoutes(request, env);
+        return addCors(res);
+      }
+      return addCors(Response.json({ error: 'Endpoint not found' }, { status: 404 }));
+    }
+
+    // Static Assets fallback for Cloudflare Workers Static Assets
+    if (env.ASSETS) {
+      return env.ASSETS.fetch(request);
+    }
+
+    return new Response('Cloudflare Worker active. Static assets binding not present.', { status: 200 });
+  },
+};

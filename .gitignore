@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.wrangler/
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+
+# Cloudflare & Wrangler state
+.dev.vars
+
+# Temporary and local test files
+*.local
+scratch/
+test-results/
+coverage/
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+
+# Real inventory files, photos and exports (Rule 11)
+*.xlsx
+*.xls
+*.csv
+/photos/
+/uploads/
+/exports/
+!docs/sample-template.xlsx

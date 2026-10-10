@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "warehouse-pda-audit",
+  "main": "worker/index.ts",
+  "compatibility_date": "2024-10-11",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "warehouse-audit-db",
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "PHOTO_BUCKET",
+      "bucket_name": "warehouse-audit-photos"
+    }
+  ],
+  "vars": {
+    "ENVIRONMENT": "development",
+    "AUTH_MODE": "development"
+  }
+}
