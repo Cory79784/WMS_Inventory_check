@@ -135,4 +135,49 @@ describe('Worker Routes & Feasibility Diagnostics', () => {
     expect(auth.user).toBeNull();
     expect(auth.error).toContain('Missing Cloudflare Access credentials');
   });
+
+  it('Only designated admin email can be auto-provisioned as ADMIN in production Access', async () => {
+    const mockDb = {
+      prepare: vi.fn().mockImplementation((query: string) => ({
+        bind: vi.fn().mockReturnValue({
+          first: vi.fn().mockResolvedValue(null), // not registered yet
+          all: vi.fn().mockResolvedValue({ results: [{ role: 'ADMIN' }] }),
+          run: vi.fn().mockResolvedValue({ success: true }),
+        }),
+      })),
+    } as unknown as D1Database;
+
+    const env: Env = {
+      DB: mockDb,
+      PHOTO_BUCKET: {} as unknown as R2Bucket,
+      ENVIRONMENT: 'production',
+      AUTH_MODE: 'access',
+      ADMIN_EMAILS: 'salahdhy@gmail.com',
+    };
+
+    // Whitelisted admin
+    const adminReq = new Request('https://audit.test/api/auth/me', {
+      headers: {
+        'Cf-Access-Jwt-Assertion': 'jwt.token.valid',
+        'Cf-Access-Authenticated-User-Email': 'salahdhy@gmail.com',
+      },
+    });
+
+    const adminAuth = await authenticateRequest(adminReq, env);
+    expect(adminAuth.user).not.toBeNull();
+    expect(adminAuth.user?.email).toBe('salahdhy@gmail.com');
+    expect(adminAuth.user?.roles).toContain('ADMIN');
+
+    // Non-whitelisted user attempting first login
+    const strangerReq = new Request('https://audit.test/api/auth/me', {
+      headers: {
+        'Cf-Access-Jwt-Assertion': 'jwt.token.valid',
+        'Cf-Access-Authenticated-User-Email': 'stranger@example.com',
+      },
+    });
+
+    const strangerAuth = await authenticateRequest(strangerReq, env);
+    expect(strangerAuth.user).toBeNull();
+    expect(strangerAuth.error).toContain('未在系统中授权');
+  });
 });

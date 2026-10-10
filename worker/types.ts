@@ -9,6 +9,7 @@ export interface Env {
   AUTH_MODE?: string; // 'access' | 'development'
   CF_ACCESS_TEAM_DOMAIN?: string;
   CF_ACCESS_AUD?: string;
+  ADMIN_EMAILS?: string;
 }
 
 export interface AuthUser {

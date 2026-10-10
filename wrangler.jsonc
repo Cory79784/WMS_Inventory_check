@@ -14,7 +14,7 @@
     {
       "binding": "DB",
       "database_name": "warehouse-audit-db",
-      "database_id": "00000000-0000-0000-0000-000000000000"
+      "database_id": "200baafe-fece-4008-a213-c0aca72c2795"
     }
   ],
   "r2_buckets": [
@@ -25,6 +25,7 @@
   ],
   "vars": {
     "ENVIRONMENT": "production",
-    "AUTH_MODE": "access"
+    "AUTH_MODE": "access",
+    "ADMIN_EMAILS": "salahdhy@gmail.com"
   }
 }

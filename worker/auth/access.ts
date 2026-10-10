@@ -24,20 +24,14 @@ export async function authenticateRequest(
 
     // Query user and roles from D1
     try {
-      // Bootstrap first user as ADMIN if users table is completely empty
-      const totalUsers = await env.DB.prepare(`SELECT count(*) as count FROM users`).first<{ count: number }>();
-      if (totalUsers && totalUsers.count === 0) {
-        const bootstrapId = `usr_${Date.now()}`;
-        await env.DB.prepare(
-          `INSERT INTO users (user_id, email, name, is_active) VALUES (?, ?, ?, 1)`
-        ).bind(bootstrapId, emailHeader, emailHeader.split('@')[0]).run();
+      const configuredAdmins = (env.ADMIN_EMAILS || 'salahdhy@gmail.com')
+        .split(',')
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean);
 
-        await env.DB.prepare(
-          `INSERT INTO user_roles (user_id, role) VALUES (?, 'ADMIN'), (?, 'OPERATOR'), (?, 'REVIEWER')`
-        ).bind(bootstrapId, bootstrapId, bootstrapId).run();
-      }
+      const isConfiguredAdmin = configuredAdmins.includes(emailHeader.toLowerCase());
 
-      const userRecord = await env.DB.prepare(
+      let userRecord = await env.DB.prepare(
         `SELECT user_id, email, employee_id, name, is_active FROM users WHERE email = ?`
       ).bind(emailHeader).first<{
         user_id: string;
@@ -47,10 +41,37 @@ export async function authenticateRequest(
         is_active: number;
       }>();
 
-      if (!userRecord || !userRecord.is_active) {
+      // Only designated admin emails can be auto-provisioned
+      if (!userRecord) {
+        if (isConfiguredAdmin) {
+          const bootstrapId = `usr_${Date.now()}`;
+          await env.DB.prepare(
+            `INSERT INTO users (user_id, email, name, is_active) VALUES (?, ?, ?, 1)`
+          ).bind(bootstrapId, emailHeader, emailHeader.split('@')[0]).run();
+
+          await env.DB.prepare(
+            `INSERT INTO user_roles (user_id, role) VALUES (?, 'ADMIN'), (?, 'OPERATOR'), (?, 'REVIEWER')`
+          ).bind(bootstrapId, bootstrapId, bootstrapId).run();
+
+          userRecord = {
+            user_id: bootstrapId,
+            email: emailHeader,
+            employee_id: null,
+            name: emailHeader.split('@')[0],
+            is_active: 1,
+          };
+        } else {
+          return {
+            user: null,
+            error: `用户 ${emailHeader} 未在系统中授权。仅预先配置的系统管理员 (${configuredAdmins.join(', ')}) 可初始化访问，其他操作员需由管理员在系统中添加。`,
+          };
+        }
+      }
+
+      if (!userRecord.is_active) {
         return {
           user: null,
-          error: `User with email ${emailHeader} is not registered or deactivated in the audit system database.`,
+          error: `用户 ${emailHeader} 账号已被系统停用。`,
         };
       }
 
@@ -58,7 +79,13 @@ export async function authenticateRequest(
         `SELECT role FROM user_roles WHERE user_id = ?`
       ).bind(userRecord.user_id).all<{ role: 'ADMIN' | 'OPERATOR' | 'REVIEWER' }>();
 
-      const roles = rolesResult.results.map((r) => r.role);
+      let roles = rolesResult.results.map((r) => r.role);
+      if (isConfiguredAdmin && !roles.includes('ADMIN')) {
+        await env.DB.prepare(
+          `INSERT OR IGNORE INTO user_roles (user_id, role) VALUES (?, 'ADMIN')`
+        ).bind(userRecord.user_id).run();
+        roles = ['ADMIN', ...roles];
+      }
 
       return {
         user: {
