@@ -1,0 +1,1086 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { HallId, LocationAuditData, LocationSkuItem, InspectionPhotoItem } from '../types';
+import {
+  fetchLocationAudit,
+  saveLocationInspection,
+  uploadInspectionPhoto,
+  fetchActiveVersion,
+  fetchLocationsList,
+} from '../services/api';
+import {
+  Scan,
+  CheckCircle2,
+  AlertTriangle,
+  Camera,
+  PlusCircle,
+  ChevronLeft,
+  ChevronRight,
+  ArrowRight,
+  RotateCw,
+  X,
+  FileQuestion,
+  Save,
+  Check,
+} from 'lucide-react';
+
+interface LocationInspectionPageProps {
+  currentHall: HallId;
+  onOpenImport: () => void;
+  onOpenTest: () => void;
+}
+
+export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
+  currentHall,
+  onOpenImport,
+  onOpenTest,
+}) => {
+  // Input search state
+  const [inputLoc, setInputLoc] = useState('');
+  const [activeVersionInfo, setActiveVersionInfo] = useState<any | null>(null);
+
+  // Current location audit state
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [locData, setLocData] = useState<LocationAuditData | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
+  // Editable inspection state for current location
+  const [skuList, setSkuList] = useState<LocationSkuItem[]>([]);
+  const [photos, setPhotos] = useState<InspectionPhotoItem[]>([]);
+  const [locationNotes, setLocationNotes] = useState('');
+  const [isEmptyConfirmed, setIsEmptyConfirmed] = useState(false);
+
+  // Modal: Shortage Input
+  const [shortageModalSku, setShortageModalSku] = useState<LocationSkuItem | null>(null);
+  const [shortageCountInput, setShortageCountInput] = useState<string>('');
+
+  // Modal: Surplus Input
+  const [showSurplusModal, setShowSurplusModal] = useState(false);
+  const [surplusMode, setSurplusMode] = useState<'SKU' | 'BARCODE' | 'NO_SKU'>('SKU');
+  const [surplusSkuInput, setSurplusSkuInput] = useState('');
+  const [surplusBarcodeInput, setSurplusBarcodeInput] = useState('');
+  const [surplusQtyInput, setSurplusQtyInput] = useState('1');
+  const [surplusNotesInput, setSurplusNotesInput] = useState('');
+  const [surplusPhotoFile, setSurplusPhotoFile] = useState<File | null>(null);
+  const [surplusPhotoPreview, setSurplusPhotoPreview] = useState<string | null>(null);
+  const [uploadingSurplusPhoto, setUploadingSurplusPhoto] = useState(false);
+
+  // Quick Location Suggestions / Autocomplete
+  const [locSuggestions, setLocSuggestions] = useState<string[]>([]);
+
+  const scanInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const surplusFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Haptic feedback for PDA
+  const triggerHaptic = (success = true) => {
+    if (navigator.vibrate) {
+      navigator.vibrate(success ? [40] : [80, 50, 80]);
+    }
+  };
+
+  // Load Active Version for current Hall
+  const loadActiveVersion = async () => {
+    setErrorMsg(null);
+    try {
+      const res = await fetchActiveVersion(currentHall);
+      if (res.hasActiveVersion) {
+        setActiveVersionInfo(res.activeVersion);
+      } else {
+        setActiveVersionInfo(null);
+      }
+    } catch (err: unknown) {
+      console.error('Failed to load active version', err);
+    }
+  };
+
+  useEffect(() => {
+    loadActiveVersion();
+    setLocData(null);
+    setInputLoc('');
+    setSkuList([]);
+    setPhotos([]);
+  }, [currentHall]);
+
+  // Load Location Audit
+  const handleQueryLocation = async (targetLoc: string) => {
+    const loc = targetLoc.trim();
+    if (!loc) return;
+    setLoading(true);
+    setErrorMsg(null);
+    setSaveSuccessMsg(null);
+    setLocSuggestions([]);
+
+    try {
+      const data = await fetchLocationAudit(currentHall, loc);
+      setLocData(data);
+      setInputLoc(data.locationCode);
+
+      // Initialize SKU inspection state
+      const initializedSkus: LocationSkuItem[] = data.skus.map((s: LocationSkuItem) => ({
+        ...s,
+        actualQty: s.actualQty !== null && s.actualQty !== undefined ? s.actualQty : null,
+        differenceQty: s.differenceQty !== null && s.differenceQty !== undefined ? s.differenceQty : null,
+        discrepancyType: s.discrepancyType || null,
+      }));
+
+      setSkuList(initializedSkus);
+      setPhotos(data.inspection?.photos || []);
+      setLocationNotes(data.inspection?.notes || '');
+      setIsEmptyConfirmed(Boolean(data.inspection?.isEmptyConfirmed));
+
+      triggerHaptic(true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMsg(msg);
+      triggerHaptic(false);
+    } finally {
+      setLoading(false);
+      // Re-focus scanner input
+      setTimeout(() => scanInputRef.current?.focus(), 100);
+    }
+  };
+
+  // Autocomplete fetch on typing
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (inputLoc.trim().length >= 2) {
+        const list = await fetchLocationsList(currentHall, inputLoc.trim());
+        setLocSuggestions(list);
+      } else {
+        setLocSuggestions([]);
+      }
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [inputLoc, currentHall]);
+
+  // Handle Scanner Enter Key
+  const handleScanKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      handleQueryLocation(inputLoc);
+    }
+  };
+
+  // 1-Tap Normal for single SKU
+  const handleSetSkuNormal = (skuCode: string) => {
+    setSkuList((prev) =>
+      prev.map((item) => {
+        if (item.sku === skuCode) {
+          return {
+            ...item,
+            actualQty: item.systemQty,
+            differenceQty: 0,
+            discrepancyType: 'NORMAL',
+            notes: '盘点正常相符',
+          };
+        }
+        return item;
+      })
+    );
+    triggerHaptic(true);
+  };
+
+  // 1-Tap All Normal for entire location
+  const handleSetAllNormal = () => {
+    setSkuList((prev) =>
+      prev.map((item) => ({
+        ...item,
+        actualQty: item.systemQty,
+        differenceQty: 0,
+        discrepancyType: 'NORMAL',
+        notes: '一键确认相符',
+      }))
+    );
+    setIsEmptyConfirmed(false);
+    triggerHaptic(true);
+  };
+
+  // Confirm Empty Location
+  const handleConfirmEmpty = () => {
+    setIsEmptyConfirmed(true);
+    setSkuList([]);
+    triggerHaptic(true);
+  };
+
+  // Open Shortage Modal
+  const handleOpenShortage = (item: LocationSkuItem) => {
+    setShortageModalSku(item);
+    setShortageCountInput('1');
+  };
+
+  // Submit Shortage
+  const handleSubmitShortage = () => {
+    if (!shortageModalSku) return;
+    const shortageCount = parseInt(shortageCountInput || '0', 10);
+    if (isNaN(shortageCount) || shortageCount <= 0) {
+      alert('请输入有效的少货数量（大于 0）');
+      return;
+    }
+
+    if (shortageCount > shortageModalSku.systemQty) {
+      alert(`少货数量 (${shortageCount}) 不能大于账面库存 (${shortageModalSku.systemQty})！`);
+      return;
+    }
+
+    const actual = shortageModalSku.systemQty - shortageCount;
+    const diff = -shortageCount;
+
+    setSkuList((prev) =>
+      prev.map((item) => {
+        if (item.sku === shortageModalSku.sku) {
+          return {
+            ...item,
+            actualQty: actual,
+            differenceQty: diff,
+            discrepancyType: 'SHORTAGE',
+            notes: `现场少货 ${shortageCount} 件`,
+          };
+        }
+        return item;
+      })
+    );
+
+    setShortageModalSku(null);
+    setShortageCountInput('');
+    triggerHaptic(true);
+  };
+
+  // Handle Photo File selection for Surplus
+  const handleSurplusPhotoChange = (file: File) => {
+    setSurplusPhotoFile(file);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setSurplusPhotoPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Submit Surplus
+  const handleSubmitSurplus = async () => {
+    const qty = parseInt(surplusQtyInput || '0', 10);
+    if (isNaN(qty) || qty <= 0) {
+      alert('请输入有效的多货数量（大于 0）');
+      return;
+    }
+
+    if (surplusMode === 'SKU' && !surplusSkuInput.trim()) {
+      alert('请输入或扫描多货商品的 SKU 编码！');
+      return;
+    }
+
+    if (surplusMode === 'BARCODE' && !surplusBarcodeInput.trim()) {
+      alert('请输入或扫描多货商品的 Barcode / eBarcode 条码！');
+      return;
+    }
+
+    if (surplusMode === 'NO_SKU') {
+      if (!surplusPhotoFile) {
+        alert('【规则强制要求】：无 SKU / 未知商品多货必须现场拍照存证！');
+        return;
+      }
+    }
+
+    setUploadingSurplusPhoto(true);
+
+    try {
+      let uploadedPhotoInfo: any = null;
+      if (surplusPhotoFile && locData) {
+        uploadedPhotoInfo = await uploadInspectionPhoto(
+          surplusPhotoFile,
+          currentHall,
+          locData.locationCode
+        );
+        if (uploadedPhotoInfo?.photoId) {
+          setPhotos((prev) => [
+            ...prev,
+            {
+              photoId: uploadedPhotoInfo.photoId,
+              objectKey: uploadedPhotoInfo.objectKey,
+              previewUrl: uploadedPhotoInfo.previewUrl,
+            },
+          ]);
+        }
+      }
+
+      const newSurplusItem: LocationSkuItem = {
+        sku: surplusMode === 'SKU' ? surplusSkuInput.trim() : (surplusMode === 'BARCODE' ? `条码:${surplusBarcodeInput.trim()}` : '无SKU未知品'),
+        barcode: surplusMode === 'BARCODE' ? surplusBarcodeInput.trim() : '',
+        eBarcode: '',
+        customerCode: '',
+        nameZh: surplusMode === 'NO_SKU' ? '无SKU商品(已拍照)' : (surplusNotesInput.trim() || '现场多货'),
+        nameEn: '',
+        systemQty: 0,
+        availableQty: 0,
+        allocatedQty: 0,
+        frozenQty: 0,
+        actualQty: qty,
+        differenceQty: qty,
+        discrepancyType: surplusMode === 'NO_SKU' ? 'NO_SKU_SURPLUS' : 'SURPLUS',
+        notes: surplusNotesInput.trim() || `现场多货 ${qty} 件 (${surplusMode})`,
+      };
+
+      setSkuList((prev) => [...prev, newSurplusItem]);
+      setIsEmptyConfirmed(false);
+
+      // Reset modal
+      setShowSurplusModal(false);
+      setSurplusSkuInput('');
+      setSurplusBarcodeInput('');
+      setSurplusQtyInput('1');
+      setSurplusNotesInput('');
+      setSurplusPhotoFile(null);
+      setSurplusPhotoPreview(null);
+      triggerHaptic(true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(`添加多货失败: ${msg}`);
+      triggerHaptic(false);
+    } finally {
+      setUploadingSurplusPhoto(false);
+    }
+  };
+
+  // General Location Photo Upload
+  const handleLocationPhotoUpload = async (file: File) => {
+    if (!locData) return;
+    try {
+      const res = await uploadInspectionPhoto(file, currentHall, locData.locationCode);
+      if (res?.photoId) {
+        setPhotos((prev) => [
+          ...prev,
+          {
+            photoId: res.photoId,
+            objectKey: res.objectKey,
+            previewUrl: res.previewUrl,
+          },
+        ]);
+        triggerHaptic(true);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(`照片上传失败: ${msg}`);
+      triggerHaptic(false);
+    }
+  };
+
+  // Save current location inspection to Cloudflare D1
+  const handleSaveInspection = async (andNext = false) => {
+    if (!locData) return;
+
+    // Check if all SKUs have been verified
+    const unverifiedCount = skuList.filter((s) => s.actualQty === null || s.actualQty === undefined).length;
+    if (unverifiedCount > 0 && !isEmptyConfirmed) {
+      const confirmSave = confirm(`当前库位仍有 ${unverifiedCount} 个 SKU 未核查确认，是否确定提交暂存？`);
+      if (!confirmSave) return;
+    }
+
+    setSaving(true);
+    setSaveSuccessMsg(null);
+    setErrorMsg(null);
+
+    const hasAnyDiscrepancy = skuList.some((s) => s.discrepancyType && s.discrepancyType !== 'NORMAL');
+    const finalStatus = hasAnyDiscrepancy ? 'PENDING_REVIEW' : 'VERIFIED';
+
+    const payload = {
+      hallId: currentHall,
+      locationCode: locData.locationCode,
+      isEmptyConfirmed,
+      status: finalStatus,
+      notes: locationNotes,
+      skus: skuList.map((s) => ({
+        sku: s.sku,
+        barcode: s.barcode,
+        eBarcode: s.eBarcode,
+        customerCode: s.customerCode,
+        nameZh: s.nameZh,
+        systemQty: s.systemQty,
+        actualQty: s.actualQty ?? 0,
+        differenceQty: s.differenceQty ?? 0,
+        discrepancyType: s.discrepancyType || 'NORMAL',
+        notes: s.notes,
+      })),
+      photos: photos.map((p) => ({
+        photoId: p.photoId,
+        objectKey: p.objectKey,
+      })),
+    };
+
+    try {
+      await saveLocationInspection(payload);
+      setSaveSuccessMsg(`库位 ${locData.locationCode} 核查保存成功！`);
+      triggerHaptic(true);
+
+      if (andNext && locData.navigation.nextLocationCode) {
+        handleQueryLocation(locData.navigation.nextLocationCode);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMsg(`保存失败: ${msg}`);
+      triggerHaptic(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto px-2 sm:px-4 py-3 space-y-3 font-sans pb-24">
+      {/* Top Banner: Hall & Active Version Status */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-2.5 flex items-center justify-between text-xs">
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-slate-800 text-sm">{currentHall} 盘点厅</span>
+          {activeVersionInfo ? (
+            <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-mono border border-blue-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></span>
+              V{activeVersionInfo.version_number} ({activeVersionInfo.source_exported_at ? activeVersionInfo.source_exported_at.split('T')[0] : '生效中'})
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-200">
+              <AlertTriangle className="w-3 h-3 text-amber-600" />
+              未发布 WMS 快照
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          {!activeVersionInfo && (
+            <button
+              type="button"
+              onClick={onOpenImport}
+              className="bg-blue-600 text-white font-medium px-2 py-1 rounded hover:bg-blue-700 transition"
+            >
+              PC 上传 Excel
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onOpenTest}
+            className="text-slate-500 hover:text-slate-700 px-2 py-1 rounded border border-slate-200 hover:bg-slate-50 transition"
+          >
+            硬件测试
+          </button>
+        </div>
+      </div>
+
+      {/* Main Barcode Scanner Wedge & Search Bar */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 relative">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <input
+              ref={scanInputRef}
+              type="text"
+              value={inputLoc}
+              onChange={(e) => setInputLoc(e.target.value.toUpperCase())}
+              onKeyDown={handleScanKeyDown}
+              placeholder="扫库位条码 / 输入库位 (如 109-047-1)"
+              className="w-full bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-8 py-2.5 text-base font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 transition"
+              autoFocus
+              autoCapitalize="characters"
+              autoCorrect="off"
+            />
+            <Scan className="w-5 h-5 text-slate-400 absolute left-2.5 top-3" />
+            {inputLoc && (
+              <button
+                type="button"
+                onClick={() => {
+                  setInputLoc('');
+                  scanInputRef.current?.focus();
+                }}
+                className="absolute right-2.5 top-3 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => handleQueryLocation(inputLoc)}
+            disabled={loading || !inputLoc.trim()}
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold px-4 py-2.5 rounded-lg flex items-center gap-1 shadow-sm transition active:scale-95"
+          >
+            {loading ? <RotateCw className="w-4 h-4 animate-spin" /> : '查询'}
+          </button>
+        </div>
+
+        {/* Autocomplete dropdown suggestions */}
+        {locSuggestions.length > 0 && (
+          <div className="absolute left-3 right-3 top-14 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-30 max-h-48 overflow-y-auto divide-y divide-slate-100">
+            {locSuggestions.map((loc) => (
+              <button
+                key={loc}
+                type="button"
+                onClick={() => handleQueryLocation(loc)}
+                className="w-full text-left px-3 py-2 text-sm font-mono hover:bg-blue-50 text-slate-800 flex items-center justify-between"
+              >
+                <span>{loc}</span>
+                <span className="text-xs text-blue-600 font-sans">点击载入</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Sequential Navigation & Location count */}
+        {locData?.navigation && (
+          <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 text-xs text-slate-500">
+            <button
+              type="button"
+              disabled={!locData.navigation.prevLocationCode}
+              onClick={() => locData.navigation.prevLocationCode && handleQueryLocation(locData.navigation.prevLocationCode)}
+              className="flex items-center gap-0.5 px-2 py-1 rounded bg-slate-100 text-slate-700 disabled:opacity-30 disabled:pointer-events-none active:bg-slate-200"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span>上一个库位</span>
+            </button>
+
+            <span className="font-mono text-slate-600">
+              第 <strong className="text-blue-600">{locData.navigation.currentIndex}</strong> / {locData.navigation.totalLocations} 个库位
+            </span>
+
+            <button
+              type="button"
+              disabled={!locData.navigation.nextLocationCode}
+              onClick={() => locData.navigation.nextLocationCode && handleQueryLocation(locData.navigation.nextLocationCode)}
+              className="flex items-center gap-0.5 px-2 py-1 rounded bg-slate-100 text-slate-700 disabled:opacity-30 disabled:pointer-events-none active:bg-slate-200"
+            >
+              <span>下一个库位</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Messages */}
+      {errorMsg && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2.5 rounded-lg text-xs flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+      {saveSuccessMsg && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-2 rounded-lg text-xs flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span className="font-medium">{saveSuccessMsg}</span>
+        </div>
+      )}
+
+      {/* Active Location Inspection View */}
+      {locData && (
+        <div className="space-y-3">
+          {/* Location Summary Header Card */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-[11px] text-slate-400 font-medium">当前盘点物理库位</span>
+                <h2 className="text-2xl font-bold font-mono text-slate-900 tracking-tight flex items-center gap-2">
+                  {locData.locationCode}
+                  {isEmptyConfirmed && (
+                    <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-normal font-sans border border-slate-200">
+                      确认为空库位
+                    </span>
+                  )}
+                </h2>
+              </div>
+
+              {/* Quick 1-Tap All Normal Button */}
+              {locData.hasBookStock && !isEmptyConfirmed && (
+                <button
+                  type="button"
+                  onClick={handleSetAllNormal}
+                  className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-sm active:scale-95 transition"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  一键全相符 (正常)
+                </button>
+              )}
+            </div>
+
+            {/* Sparse Location Notification */}
+            {!locData.hasBookStock && (
+              <div className="mt-2 bg-amber-50 border border-amber-200 p-2.5 rounded-lg flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs text-amber-800">
+                  <FileQuestion className="w-4 h-4 text-amber-600" />
+                  <span>WMS 账面中无此库位记录（稀疏空库位）</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleConfirmEmpty}
+                  className={`text-xs font-medium px-2.5 py-1 rounded transition ${
+                    isEmptyConfirmed
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-white border border-amber-300 text-amber-900 hover:bg-amber-100'
+                  }`}
+                >
+                  {isEmptyConfirmed ? '✓ 已确认空库位' : '确认为空库位'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Aggregated SKU List for this Location */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs font-bold text-slate-700">
+                库位商品列表 ({skuList.length} 个 SKU)
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowSurplusModal(true)}
+                className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 border border-blue-200 active:scale-95 transition"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                + 现场多货
+              </button>
+            </div>
+
+            {skuList.map((item, idx) => {
+              const isNormal = item.discrepancyType === 'NORMAL';
+              const isShortage = item.discrepancyType === 'SHORTAGE';
+              const isSurplus = item.discrepancyType === 'SURPLUS' || item.discrepancyType === 'NO_SKU_SURPLUS';
+              const hasDiff = item.differenceQty !== null && item.differenceQty !== 0;
+
+              return (
+                <div
+                  key={`${item.sku}_${idx}`}
+                  className={`bg-white rounded-xl border p-3 shadow-sm transition ${
+                    isShortage
+                      ? 'border-red-300 bg-red-50/20'
+                      : isSurplus
+                      ? 'border-amber-300 bg-amber-50/20'
+                      : isNormal
+                      ? 'border-emerald-300 bg-emerald-50/10'
+                      : 'border-slate-200'
+                  }`}
+                >
+                  {/* Top Bar: SKU & Identification */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono font-bold text-base text-slate-900 break-all">
+                          {item.sku}
+                        </span>
+                        {item.customerCode && (
+                          <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded border border-slate-200">
+                            客:{item.customerCode}
+                          </span>
+                        )}
+                        {item.barcode && (
+                          <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded border border-blue-200 font-mono">
+                            条码:{item.barcode}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-600 mt-0.5 line-clamp-1">
+                        {item.nameZh || '无中文品名'}
+                      </p>
+                    </div>
+
+                    {/* Discrepancy Status Tag */}
+                    <div>
+                      {isNormal && (
+                        <span className="inline-flex items-center gap-0.5 bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
+                          <Check className="w-3 h-3" /> 相符
+                        </span>
+                      )}
+                      {isShortage && (
+                        <span className="inline-flex items-center gap-0.5 bg-red-100 text-red-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
+                          少货 {Math.abs(item.differenceQty || 0)}
+                        </span>
+                      )}
+                      {isSurplus && (
+                        <span className="inline-flex items-center gap-0.5 bg-amber-100 text-amber-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
+                          多货 +{item.differenceQty || 0}
+                        </span>
+                      )}
+                      {!item.discrepancyType && (
+                        <span className="bg-slate-100 text-slate-500 text-[11px] px-2 py-0.5 rounded-full font-medium">
+                          待核对
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Stock Quantities Grid (6 Pillars) */}
+                  <div className="grid grid-cols-6 gap-1 mt-2.5 pt-2 border-t border-slate-100 text-center">
+                    <div className="bg-slate-50 rounded p-1">
+                      <div className="text-[10px] text-slate-400">账面</div>
+                      <div className="text-sm font-bold text-slate-800 font-mono">{item.systemQty}</div>
+                    </div>
+                    <div className="bg-slate-50 rounded p-1">
+                      <div className="text-[10px] text-slate-400">可用</div>
+                      <div className="text-xs font-semibold text-slate-700 font-mono">{item.availableQty}</div>
+                    </div>
+                    <div className="bg-slate-50 rounded p-1">
+                      <div className="text-[10px] text-slate-400">待出</div>
+                      <div className="text-xs font-semibold text-slate-700 font-mono">{item.allocatedQty}</div>
+                    </div>
+                    <div className="bg-slate-50 rounded p-1">
+                      <div className="text-[10px] text-slate-400">冻结</div>
+                      <div className="text-xs font-semibold text-slate-700 font-mono">{item.frozenQty}</div>
+                    </div>
+                    <div className={`rounded p-1 ${item.actualQty !== null ? 'bg-blue-50 text-blue-900' : 'bg-slate-50 text-slate-400'}`}>
+                      <div className="text-[10px] font-medium">实盘</div>
+                      <div className="text-sm font-bold font-mono">
+                        {item.actualQty !== null ? item.actualQty : '-'}
+                      </div>
+                    </div>
+                    <div className={`rounded p-1 ${
+                      hasDiff
+                        ? isShortage
+                          ? 'bg-red-100 text-red-900 font-bold'
+                          : 'bg-amber-100 text-amber-900 font-bold'
+                        : isNormal
+                        ? 'bg-emerald-50 text-emerald-800'
+                        : 'bg-slate-50 text-slate-400'
+                    }`}>
+                      <div className="text-[10px]">盘差</div>
+                      <div className="text-sm font-mono font-bold">
+                        {item.differenceQty !== null ? (item.differenceQty > 0 ? `+${item.differenceQty}` : item.differenceQty) : '-'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SKU Action Buttons */}
+                  <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => handleSetSkuNormal(item.sku)}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 active:scale-95 transition"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      正常
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleOpenShortage(item)}
+                      className="bg-slate-100 hover:bg-red-50 hover:text-red-700 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 border border-slate-200 active:scale-95 transition"
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+                      少货
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Location Inspection Photos Section */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <Camera className="w-4 h-4 text-blue-600" />
+                现场照片存证 ({photos.length} 张)
+              </span>
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 px-2.5 py-1 rounded font-medium flex items-center gap-1"
+              >
+                + 拍照 / 上传
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files?.[0]) {
+                    handleLocationPhotoUpload(e.target.files[0]);
+                  }
+                }}
+              />
+            </div>
+
+            {photos.length > 0 && (
+              <div className="flex items-center gap-2 overflow-x-auto py-1">
+                {photos.map((p) => (
+                  <div key={p.photoId} className="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 shrink-0">
+                    <img
+                      src={p.previewUrl || `/api/inventory/inspection/photo?key=${encodeURIComponent(p.objectKey)}`}
+                      alt="Inspection"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Floating Bottom Bar: Sticky Operation Controls */}
+      {locData && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 p-2.5 z-40 shadow-lg">
+          <div className="max-w-2xl mx-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleSaveInspection(false)}
+              disabled={saving}
+              className="flex-1 bg-slate-800 hover:bg-slate-900 text-white font-semibold py-3 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition text-sm disabled:opacity-50"
+            >
+              {saving ? <RotateCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              仅保存本库位
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSaveInspection(true)}
+              disabled={saving}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition text-sm disabled:opacity-50"
+            >
+              {saving ? <RotateCw className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+              保存并下一个库位
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Report Shortage */}
+      {shortageModalSku && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-4 space-y-3 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h3 className="font-bold text-slate-900 text-base flex items-center gap-1.5">
+                <AlertTriangle className="w-5 h-5 text-red-500" />
+                上报少货数量
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShortageModalSku(null)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-slate-50 p-2.5 rounded-lg text-xs space-y-1">
+              <div><strong>SKU:</strong> <span className="font-mono">{shortageModalSku.sku}</span></div>
+              <div><strong>品名:</strong> {shortageModalSku.nameZh}</div>
+              <div><strong>账面库存:</strong> <span className="font-bold text-slate-800 font-mono text-sm">{shortageModalSku.systemQty}</span> 件</div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                缺少件数 (少多少件)
+              </label>
+              <input
+                type="number"
+                min="1"
+                max={shortageModalSku.systemQty}
+                value={shortageCountInput}
+                onChange={(e) => setShortageCountInput(e.target.value)}
+                placeholder="例如: 2"
+                className="w-full text-center text-2xl font-bold font-mono border-2 border-red-300 rounded-lg p-2 focus:outline-none focus:border-red-500"
+                autoFocus
+              />
+              <div className="text-right text-xs text-slate-500 mt-1">
+                确认后实盘数量将为: {Math.max(0, shortageModalSku.systemQty - (parseInt(shortageCountInput || '0', 10)))} 件
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShortageModalSku(null)}
+                className="flex-1 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-medium"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitShortage}
+                className="flex-1 py-2 rounded-lg bg-red-600 text-white text-xs font-bold shadow-md hover:bg-red-700"
+              >
+                确认少货
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Add Surplus (现场多货) */}
+      {showSurplusModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-4 space-y-3 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h3 className="font-bold text-slate-900 text-base flex items-center gap-1.5">
+                <PlusCircle className="w-5 h-5 text-amber-500" />
+                添加现场多货
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowSurplusModal(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Mode Selector Pill */}
+            <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-lg text-xs">
+              <button
+                type="button"
+                onClick={() => setSurplusMode('SKU')}
+                className={`py-1.5 rounded font-medium transition ${
+                  surplusMode === 'SKU' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+                }`}
+              >
+                扫/输 SKU
+              </button>
+              <button
+                type="button"
+                onClick={() => setSurplusMode('BARCODE')}
+                className={`py-1.5 rounded font-medium transition ${
+                  surplusMode === 'BARCODE' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+                }`}
+              >
+                扫/输 条码
+              </button>
+              <button
+                type="button"
+                onClick={() => setSurplusMode('NO_SKU')}
+                className={`py-1.5 rounded font-medium transition ${
+                  surplusMode === 'NO_SKU' ? 'bg-amber-600 text-white shadow-sm' : 'text-slate-500'
+                }`}
+              >
+                无 SKU 货物
+              </button>
+            </div>
+
+            {/* Field: SKU code */}
+            {surplusMode === 'SKU' && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  SKU 编码 (扫码或录入)
+                </label>
+                <input
+                  type="text"
+                  value={surplusSkuInput}
+                  onChange={(e) => setSurplusSkuInput(e.target.value.toUpperCase())}
+                  placeholder="扫描或输入外箱 SKU"
+                  className="w-full font-mono font-bold text-sm border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  autoFocus
+                />
+              </div>
+            )}
+
+            {/* Field: Barcode */}
+            {surplusMode === 'BARCODE' && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Barcode / eBarcode 条码 (扫码或录入)
+                </label>
+                <input
+                  type="text"
+                  value={surplusBarcodeInput}
+                  onChange={(e) => setSurplusBarcodeInput(e.target.value.trim())}
+                  placeholder="扫描外箱 Barcode / eBarcode"
+                  className="w-full font-mono font-bold text-sm border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  autoFocus
+                />
+              </div>
+            )}
+
+            {/* Field: No SKU rule notice */}
+            {surplusMode === 'NO_SKU' && (
+              <div className="bg-amber-50 border border-amber-200 p-2 rounded-lg text-xs text-amber-800">
+                <strong>⚠️ 规则强制要求：</strong> 无 SKU 或未知白牌货物，必须拍摄商品及外包装清晰照片存证！
+              </div>
+            )}
+
+            {/* Field: Quantity */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                多出件数 (数量)
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={surplusQtyInput}
+                onChange={(e) => setSurplusQtyInput(e.target.value)}
+                placeholder="数量"
+                className="w-full text-center text-xl font-bold font-mono border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              />
+            </div>
+
+            {/* Field: Photo Upload (Mandatory for NO_SKU) */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                {surplusMode === 'NO_SKU' ? (
+                  <span className="text-red-600 font-bold">* 拍照存证 (必填)</span>
+                ) : (
+                  '现场拍照 (可选)'
+                )}
+              </label>
+              <input
+                ref={surplusFileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files?.[0]) {
+                    handleSurplusPhotoChange(e.target.files[0]);
+                  }
+                }}
+              />
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => surplusFileInputRef.current?.click()}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-800 px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border border-slate-200"
+                >
+                  <Camera className="w-4 h-4 text-blue-600" />
+                  {surplusPhotoFile ? '重新拍照' : '现场拍照'}
+                </button>
+
+                {surplusPhotoPreview && (
+                  <div className="w-10 h-10 rounded-lg overflow-hidden border border-slate-300 shrink-0">
+                    <img src={surplusPhotoPreview} alt="Preview" className="w-full h-full object-cover" />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Field: Notes */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                备注说明 (可选)
+              </label>
+              <input
+                type="text"
+                value={surplusNotesInput}
+                onChange={(e) => setSurplusNotesInput(e.target.value)}
+                placeholder="例如: 黄色胶带封口，无外箱标"
+                className="w-full text-xs border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowSurplusModal(false)}
+                className="flex-1 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-medium"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={uploadingSurplusPhoto}
+                onClick={handleSubmitSurplus}
+                className="flex-1 py-2 rounded-lg bg-amber-600 text-white text-xs font-bold shadow-md hover:bg-amber-700 disabled:opacity-50"
+              >
+                {uploadingSurplusPhoto ? '上传并添加...' : '确认添加多货'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

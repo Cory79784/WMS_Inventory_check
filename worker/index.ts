@@ -4,6 +4,22 @@ import { handleD1Test } from './routes/d1-test';
 import { handleR2Test } from './routes/r2-test';
 import { authenticateRequest } from './auth/access';
 import { handleInventoryRoutes } from './routes/inventory';
+import { ensureDatabaseSchema } from './db/init';
+
+let dbInitialized = false;
+
+async function autoInitDb(env: Env) {
+  if (!dbInitialized && env.DB) {
+    try {
+      const res = await ensureDatabaseSchema(env);
+      if (res.success) {
+        dbInitialized = true;
+      }
+    } catch (e) {
+      console.error('Database auto-initialization error:', e);
+    }
+  }
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -30,8 +46,16 @@ export default {
       });
     };
 
+    // Auto-init DB schema once per isolate for zero-touch cloud setup
+    await autoInitDb(env);
+
     // API Routes
     if (url.pathname.startsWith('/api/')) {
+      if (url.pathname === '/api/db/init') {
+        const result = await ensureDatabaseSchema(env);
+        return addCors(Response.json(result, { status: result.success ? 200 : 500 }));
+      }
+
       if (url.pathname === '/api/health') {
         const res = await handleHealthCheck(request, env);
         return addCors(res);

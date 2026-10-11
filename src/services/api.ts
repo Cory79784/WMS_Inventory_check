@@ -73,3 +73,60 @@ export async function fetchAuthMe(): Promise<{ authenticated: boolean; mode: str
   const res = await fetch('/api/auth/me');
   return res.json();
 }
+
+export async function fetchActiveVersion(hallId: string): Promise<any> {
+  const res = await fetch(`/api/inventory/active-version?hallId=${hallId}`);
+  if (!res.ok) {
+    const errorJson = await res.json().catch(() => ({}));
+    throw new Error(errorJson.error || `Failed to fetch active version: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function fetchLocationsList(hallId: string, query?: string): Promise<string[]> {
+  const url = `/api/inventory/locations?hallId=${hallId}${query ? `&query=${encodeURIComponent(query)}` : ''}`;
+  const res = await fetch(url);
+  if (!res.ok) return [];
+  const json = await res.json();
+  return json.locations || [];
+}
+
+export async function fetchLocationAudit(hallId: string, locationCode: string): Promise<any> {
+  const res = await fetch(`/api/inventory/location?hallId=${hallId}&locationCode=${encodeURIComponent(locationCode)}`);
+  if (!res.ok) {
+    const errorJson = await res.json().catch(() => ({}));
+    throw new Error(errorJson.error || `Failed to load location: HTTP ${res.status}`);
+  }
+  const json = await res.json();
+  return json.data;
+}
+
+export async function saveLocationInspection(payload: any): Promise<any> {
+  const res = await fetch('/api/inventory/inspection/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const errorJson = await res.json().catch(() => ({}));
+    throw new Error(errorJson.error || `Failed to save inspection: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function uploadInspectionPhoto(file: File, hallId: string, locationCode: string): Promise<any> {
+  const formData = new FormData();
+  formData.append('photo', file);
+  formData.append('hallId', hallId);
+  formData.append('locationCode', locationCode);
+
+  const res = await fetch('/api/inventory/inspection/photo', {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) {
+    const errorJson = await res.json().catch(() => ({}));
+    throw new Error(errorJson.error || `Photo upload failed: HTTP ${res.status}`);
+  }
+  return res.json();
+}

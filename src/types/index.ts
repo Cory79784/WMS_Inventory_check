@@ -52,3 +52,50 @@ export interface PhotoUploadResult {
   etag: string;
   previewUrl?: string;
 }
+
+export interface LocationSkuItem {
+  sku: string;
+  barcode: string;
+  eBarcode: string;
+  customerCode: string;
+  nameZh: string;
+  nameEn: string;
+  systemQty: number;
+  availableQty: number;
+  allocatedQty: number;
+  frozenQty: number;
+  actualQty: number | null;
+  differenceQty: number | null;
+  discrepancyType: 'NORMAL' | 'SURPLUS' | 'SHORTAGE' | 'UNEXPECTED_SKU' | 'NO_SKU_SURPLUS' | null;
+  notes?: string;
+}
+
+export interface InspectionPhotoItem {
+  photoId: string;
+  objectKey: string;
+  previewUrl?: string;
+}
+
+export interface LocationAuditData {
+  hallId: HallId;
+  locationCode: string;
+  referenceImportId: string;
+  versionNumber: number;
+  sourceExportedAt: string | null;
+  hasBookStock: boolean;
+  skus: LocationSkuItem[];
+  inspection: {
+    inspectionId?: string;
+    status: string;
+    isEmptyConfirmed: boolean;
+    notes: string;
+    completedAt: string | null;
+    photos: InspectionPhotoItem[];
+  } | null;
+  navigation: {
+    currentIndex: number | null;
+    totalLocations: number;
+    prevLocationCode: string | null;
+    nextLocationCode: string | null;
+  };
+}

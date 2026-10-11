@@ -1,12 +1,12 @@
 import React from 'react';
 import { HallId } from '../types';
-import { Warehouse, Shield } from 'lucide-react';
+import { Warehouse, ClipboardCheck, UploadCloud, Cpu } from 'lucide-react';
 
 interface HeaderProps {
   currentHall: HallId;
   onSelectHall: (hall: HallId) => void;
-  activeView: 'test' | 'import' | 'arch';
-  onSelectView: (view: 'test' | 'import' | 'arch') => void;
+  activeView: 'inspect' | 'test' | 'import' | 'arch';
+  onSelectView: (view: 'inspect' | 'test' | 'import' | 'arch') => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -17,31 +17,23 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   return (
     <header className="sticky top-0 z-50 bg-slate-900 text-white shadow-md">
-      <div className="max-w-4xl mx-auto px-3 py-2.5 flex items-center justify-between">
+      <div className="max-w-3xl mx-auto px-3 py-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Warehouse className="w-5 h-5 text-brand-500" />
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-bold text-sm tracking-tight">PDA 库存核查</span>
-              <span className="text-[10px] bg-brand-500/20 text-brand-300 px-1.5 py-0.2 rounded font-mono border border-brand-500/30">
-                Phase 2
-              </span>
-            </div>
-            <p className="text-[10px] text-slate-400">Warehouse PDA Inventory Audit</p>
-          </div>
+          <Warehouse className="w-5 h-5 text-blue-400" />
+          <span className="font-bold text-sm tracking-tight">PDA 库存核查</span>
         </div>
 
         {/* Hall Isolation Selector */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700 text-xs">
+        <div className="flex items-center gap-1.5">
+          <div className="flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700 text-xs font-mono font-bold">
             {(['H1', 'H2', 'H3'] as HallId[]).map((h) => (
               <button
                 key={h}
                 type="button"
                 onClick={() => onSelectHall(h)}
-                className={`px-2.5 py-1 rounded font-medium transition ${
+                className={`px-3 py-1 rounded transition ${
                   currentHall === h
-                    ? 'bg-brand-600 text-white shadow-sm'
+                    ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
@@ -52,48 +44,50 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Sub Nav Bar */}
-      <div className="bg-slate-800/90 border-t border-slate-700/60 px-3 py-1 flex items-center justify-between text-xs max-w-4xl mx-auto">
-        <div className="flex gap-1.5">
+      {/* Operation Tabs Bar */}
+      <div className="bg-slate-800/95 border-t border-slate-700/60 px-3 py-1 flex items-center justify-between text-xs max-w-3xl mx-auto">
+        <div className="flex gap-1">
           <button
             type="button"
-            onClick={() => onSelectView('test')}
-            className={`px-2.5 py-1 rounded transition ${
-              activeView === 'test'
-                ? 'bg-slate-700 text-white font-semibold'
-                : 'text-slate-400 hover:text-slate-200'
+            onClick={() => onSelectView('inspect')}
+            className={`px-3 py-1.5 rounded-md font-semibold flex items-center gap-1 transition ${
+              activeView === 'inspect'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
             }`}
           >
-            PDA 设备测试 (Phase 0)
+            <ClipboardCheck className="w-3.5 h-3.5" />
+            库位核查 (现场操作)
           </button>
           <button
             type="button"
             onClick={() => onSelectView('import')}
-            className={`px-2.5 py-1 rounded transition ${
+            className={`px-2.5 py-1.5 rounded-md font-medium flex items-center gap-1 transition ${
               activeView === 'import'
                 ? 'bg-slate-700 text-white font-semibold'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            WMS 版本导入 (Phase 2)
+            <UploadCloud className="w-3.5 h-3.5" />
+            WMS 导入
           </button>
           <button
             type="button"
-            onClick={() => onSelectView('arch')}
-            className={`px-2.5 py-1 rounded transition ${
-              activeView === 'arch'
+            onClick={() => onSelectView('test')}
+            className={`px-2.5 py-1.5 rounded-md font-medium flex items-center gap-1 transition ${
+              activeView === 'test'
                 ? 'bg-slate-700 text-white font-semibold'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            系统架构与规则
+            <Cpu className="w-3.5 h-3.5" />
+            测试
           </button>
         </div>
 
-        <div className="flex items-center gap-1 text-[11px] text-slate-400">
-          <Shield className="w-3 h-3 text-emerald-400" />
-          <span>厅级数据隔离生效</span>
-        </div>
+        <span className="text-[10px] text-slate-400 hidden sm:inline">
+          {currentHall} 区域数据隔离
+        </span>
       </div>
     </header>
   );

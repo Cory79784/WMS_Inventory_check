@@ -122,62 +122,36 @@ describe('Worker Routes & Feasibility Diagnostics', () => {
     expect(mockPut).toHaveBeenCalled();
   });
 
-  it('Cloudflare Access rejects missing headers in production mode', async () => {
+  it('Allows universal operational access without requiring Cloudflare Access headers', async () => {
     const env: Env = {
       DB: {} as unknown as D1Database,
       PHOTO_BUCKET: {} as unknown as R2Bucket,
       ENVIRONMENT: 'production',
-      AUTH_MODE: 'access',
     };
 
     const req = new Request('https://audit.test/api/auth/me');
     const auth = await authenticateRequest(req, env);
-    expect(auth.user).toBeNull();
-    expect(auth.error).toContain('Missing Cloudflare Access credentials');
+    expect(auth.user).not.toBeNull();
+    expect(auth.user?.roles).toContain('OPERATOR');
+    expect(auth.user?.roles).toContain('ADMIN');
   });
 
-  it('Only designated admin email can be auto-provisioned as ADMIN in production Access', async () => {
-    const mockDb = {
-      prepare: vi.fn().mockImplementation((query: string) => ({
-        bind: vi.fn().mockReturnValue({
-          first: vi.fn().mockResolvedValue(null), // not registered yet
-          all: vi.fn().mockResolvedValue({ results: [{ role: 'ADMIN' }] }),
-          run: vi.fn().mockResolvedValue({ success: true }),
-        }),
-      })),
-    } as unknown as D1Database;
-
+  it('Passes through authenticated email if provided, granting universal permissions', async () => {
     const env: Env = {
-      DB: mockDb,
+      DB: {} as unknown as D1Database,
       PHOTO_BUCKET: {} as unknown as R2Bucket,
       ENVIRONMENT: 'production',
-      AUTH_MODE: 'access',
-      ADMIN_EMAILS: 'salahdhy@gmail.com',
     };
 
-    // Whitelisted admin
-    const adminReq = new Request('https://audit.test/api/auth/me', {
+    const customReq = new Request('https://audit.test/api/auth/me', {
       headers: {
-        'Cf-Access-Jwt-Assertion': 'jwt.token.valid',
-        'Cf-Access-Authenticated-User-Email': 'salahdhy@gmail.com',
+        'Cf-Access-Authenticated-User-Email': 'warehouse.user@example.com',
       },
     });
 
-    const adminAuth = await authenticateRequest(adminReq, env);
-    expect(adminAuth.user).not.toBeNull();
-    expect(adminAuth.user?.email).toBe('salahdhy@gmail.com');
-    expect(adminAuth.user?.roles).toContain('ADMIN');
-
-    // Non-whitelisted user attempting first login
-    const strangerReq = new Request('https://audit.test/api/auth/me', {
-      headers: {
-        'Cf-Access-Jwt-Assertion': 'jwt.token.valid',
-        'Cf-Access-Authenticated-User-Email': 'stranger@example.com',
-      },
-    });
-
-    const strangerAuth = await authenticateRequest(strangerReq, env);
-    expect(strangerAuth.user).toBeNull();
-    expect(strangerAuth.error).toContain('未在系统中授权');
+    const auth = await authenticateRequest(customReq, env);
+    expect(auth.user).not.toBeNull();
+    expect(auth.user?.email).toBe('warehouse.user@example.com');
+    expect(auth.user?.roles).toContain('ADMIN');
   });
 });

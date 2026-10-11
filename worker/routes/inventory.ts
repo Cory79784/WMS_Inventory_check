@@ -448,5 +448,468 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
     }
   }
 
+  // 8. GET /api/inventory/active-version?hallId=H1
+  if (path === '/api/inventory/active-version' && request.method === 'GET') {
+    const hallId = url.searchParams.get('hallId') || 'H1';
+    try {
+      const activePointer = await env.DB.prepare(
+        `SELECT active_import_id, updated_at FROM active_hall_imports WHERE hall_id = ?`
+      ).bind(hallId).first<{ active_import_id: string | null; updated_at: string }>();
+
+      if (!activePointer?.active_import_id) {
+        return Response.json({
+          success: true,
+          hasActiveVersion: false,
+          activeVersion: null,
+        });
+      }
+
+      const activeVer = await env.DB.prepare(
+        `SELECT * FROM inventory_imports WHERE import_id = ? AND hall_id = ?`
+      ).bind(activePointer.active_import_id, hallId).first();
+
+      return Response.json({
+        success: true,
+        hasActiveVersion: Boolean(activeVer),
+        activeVersion: activeVer || null,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return Response.json({ success: false, error: msg }, { status: 500 });
+    }
+  }
+
+  // 9. GET /api/inventory/locations?hallId=H1&query=...
+  if (path === '/api/inventory/locations' && request.method === 'GET') {
+    const hallId = url.searchParams.get('hallId') || 'H1';
+    const query = url.searchParams.get('query')?.trim() || '';
+
+    try {
+      const activePointer = await env.DB.prepare(
+        `SELECT active_import_id FROM active_hall_imports WHERE hall_id = ?`
+      ).bind(hallId).first<{ active_import_id: string | null }>();
+
+      if (!activePointer?.active_import_id) {
+        return Response.json({ success: true, locations: [] });
+      }
+
+      let sql = `
+        SELECT DISTINCT location_code
+        FROM inventory_stock_rows
+        WHERE hall_id = ? AND import_id = ?
+      `;
+      const params: (string | number)[] = [hallId, activePointer.active_import_id];
+
+      if (query) {
+        sql += ` AND location_code LIKE ?`;
+        params.push(`%${query}%`);
+      }
+      sql += ` ORDER BY location_code ASC LIMIT 100`;
+
+      const result = await env.DB.prepare(sql).bind(...params).all<{ location_code: string }>();
+      return Response.json({
+        success: true,
+        locations: result.results.map((r) => r.location_code),
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return Response.json({ success: false, error: msg }, { status: 500 });
+    }
+  }
+
+  // 10. GET /api/inventory/location?hallId=H1&locationCode=xxx
+  if (path === '/api/inventory/location' && request.method === 'GET') {
+    const hallId = url.searchParams.get('hallId') || 'H1';
+    const locationCode = url.searchParams.get('locationCode')?.trim();
+
+    if (!locationCode) {
+      return Response.json({ success: false, error: 'locationCode required' }, { status: 400 });
+    }
+
+    try {
+      const activePointer = await env.DB.prepare(
+        `SELECT active_import_id FROM active_hall_imports WHERE hall_id = ?`
+      ).bind(hallId).first<{ active_import_id: string | null }>();
+
+      if (!activePointer?.active_import_id) {
+        return Response.json({
+          success: false,
+          error: `当前 ${hallId} 厅尚未发布任何 WMS 库存快照。请先在电脑端上传 Excel 并发布版本。`,
+        }, { status: 404 });
+      }
+
+      const importId = activePointer.active_import_id;
+
+      // Fetch active version metadata
+      const impMeta = await env.DB.prepare(
+        `SELECT version_number, source_exported_at, original_filename FROM inventory_imports WHERE import_id = ?`
+      ).bind(importId).first<{ version_number: number; source_exported_at: string | null; original_filename: string }>();
+
+      // Query stock rows for this location (supporting case-insensitive match)
+      const stockRows = await env.DB.prepare(`
+        SELECT
+          sku,
+          MAX(barcode) as barcode,
+          MAX(e_barcode) as e_barcode,
+          MAX(customer_code) as customer_code,
+          MAX(name_zh) as name_zh,
+          MAX(name_en) as name_en,
+          SUM(system_qty) as system_qty,
+          SUM(available_qty) as available_qty,
+          SUM(allocated_qty) as allocated_qty,
+          SUM(frozen_qty) as frozen_qty
+        FROM inventory_stock_rows
+        WHERE hall_id = ? AND import_id = ? AND (location_code = ? OR UPPER(location_code) = UPPER(?))
+        GROUP BY sku
+        ORDER BY sku ASC
+      `).bind(hallId, importId, locationCode, locationCode).all<{
+        sku: string;
+        barcode: string | null;
+        e_barcode: string | null;
+        customer_code: string | null;
+        name_zh: string | null;
+        name_en: string | null;
+        system_qty: number;
+        available_qty: number;
+        allocated_qty: number;
+        frozen_qty: number;
+      }>();
+
+      // Query existing inspection record
+      const inspection = await env.DB.prepare(`
+        SELECT * FROM location_inspections
+        WHERE hall_id = ? AND reference_import_id = ? AND (location_code = ? OR UPPER(location_code) = UPPER(?))
+      `).bind(hallId, importId, locationCode, locationCode).first<{
+        inspection_id: string;
+        status: string;
+        is_empty_confirmed: number;
+        notes: string | null;
+        completed_at: string | null;
+      }>();
+
+      let savedSkus: any[] = [];
+      let savedPhotos: any[] = [];
+
+      if (inspection?.inspection_id) {
+        const skuRecords = await env.DB.prepare(`
+          SELECT * FROM sku_inspections WHERE inspection_id = ? ORDER BY id ASC
+        `).bind(inspection.inspection_id).all();
+        savedSkus = skuRecords.results;
+
+        const photoRecords = await env.DB.prepare(`
+          SELECT * FROM inspection_photos WHERE inspection_id = ? ORDER BY captured_at ASC
+        `).bind(inspection.inspection_id).all();
+        savedPhotos = photoRecords.results;
+      }
+
+      // Merge stock rows with saved inspection data (or defaults)
+      const skus = stockRows.results.map((r) => {
+        const inspMatch = savedSkus.find((s) => s.sku === r.sku);
+        return {
+          sku: r.sku,
+          barcode: r.barcode || '',
+          eBarcode: r.e_barcode || '',
+          customerCode: r.customer_code || '',
+          nameZh: r.name_zh || '',
+          nameEn: r.name_en || '',
+          systemQty: r.system_qty,
+          availableQty: r.available_qty,
+          allocatedQty: r.allocated_qty,
+          frozenQty: r.frozen_qty,
+          actualQty: inspMatch ? inspMatch.actual_qty : null,
+          differenceQty: inspMatch ? inspMatch.difference_qty : null,
+          discrepancyType: inspMatch ? inspMatch.discrepancy_type : null,
+          notes: inspMatch?.notes || '',
+        };
+      });
+
+      // Also append surplus SKUs that were not part of book stock
+      const surplusSkus = savedSkus.filter((s) => !stockRows.results.some((r) => r.sku === s.sku)).map((s) => ({
+        sku: s.sku || '',
+        barcode: s.barcode || '',
+        eBarcode: s.e_barcode || '',
+        customerCode: '',
+        nameZh: s.notes || '现场多货',
+        nameEn: '',
+        systemQty: 0,
+        availableQty: 0,
+        allocatedQty: 0,
+        frozenQty: 0,
+        actualQty: s.actual_qty,
+        differenceQty: s.difference_qty,
+        discrepancyType: s.discrepancy_type,
+        notes: s.notes || '',
+      }));
+
+      const allSkus = [...skus, ...surplusSkus];
+
+      // Sequential navigation: find prev and next location codes in this snapshot
+      const allLocs = await env.DB.prepare(`
+        SELECT DISTINCT location_code
+        FROM inventory_stock_rows
+        WHERE hall_id = ? AND import_id = ?
+        ORDER BY location_code ASC
+      `).bind(hallId, importId).all<{ location_code: string }>();
+
+      const locList = allLocs.results.map((l) => l.location_code);
+      const currentIndex = locList.findIndex((l) => l.toUpperCase() === locationCode.toUpperCase());
+      const prevLocationCode = currentIndex > 0 ? locList[currentIndex - 1] : null;
+      const nextLocationCode = currentIndex >= 0 && currentIndex < locList.length - 1 ? locList[currentIndex + 1] : null;
+
+      return Response.json({
+        success: true,
+        data: {
+          hallId,
+          locationCode,
+          referenceImportId: importId,
+          versionNumber: impMeta?.version_number ?? 1,
+          sourceExportedAt: impMeta?.source_exported_at ?? null,
+          hasBookStock: stockRows.results.length > 0,
+          skus: allSkus,
+          inspection: inspection ? {
+            inspectionId: inspection.inspection_id,
+            status: inspection.status,
+            isEmptyConfirmed: Boolean(inspection.is_empty_confirmed),
+            notes: inspection.notes || '',
+            completedAt: inspection.completed_at,
+            photos: savedPhotos,
+          } : null,
+          navigation: {
+            currentIndex: currentIndex >= 0 ? currentIndex + 1 : null,
+            totalLocations: locList.length,
+            prevLocationCode,
+            nextLocationCode,
+          },
+        },
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return Response.json({ success: false, error: msg }, { status: 500 });
+    }
+  }
+
+  // 11. POST /api/inventory/inspection/save
+  if (path === '/api/inventory/inspection/save' && request.method === 'POST') {
+    try {
+      const body = await request.json() as {
+        hallId: string;
+        locationCode: string;
+        isEmptyConfirmed?: boolean;
+        status?: 'VERIFIED' | 'IN_PROGRESS' | 'PENDING_REVIEW' | 'CLOSED';
+        notes?: string;
+        skus: Array<{
+          sku?: string;
+          barcode?: string;
+          eBarcode?: string;
+          systemQty: number;
+          actualQty: number;
+          differenceQty: number;
+          discrepancyType: string;
+          notes?: string;
+        }>;
+        photos?: Array<{
+          photoId: string;
+          objectKey: string;
+          sku?: string;
+        }>;
+      };
+
+      if (!body.hallId || !body.locationCode) {
+        return Response.json({ success: false, error: 'hallId and locationCode required' }, { status: 400 });
+      }
+
+      const activePointer = await env.DB.prepare(
+        `SELECT active_import_id FROM active_hall_imports WHERE hall_id = ?`
+      ).bind(body.hallId).first<{ active_import_id: string | null }>();
+
+      if (!activePointer?.active_import_id) {
+        return Response.json({ success: false, error: 'No active import for this hall' }, { status: 400 });
+      }
+
+      const importId = activePointer.active_import_id;
+      const nowUtc = new Date().toISOString();
+
+      // Check existing inspection or generate ID
+      const existing = await env.DB.prepare(
+        `SELECT inspection_id FROM location_inspections WHERE hall_id = ? AND reference_import_id = ? AND location_code = ?`
+      ).bind(body.hallId, importId, body.locationCode).first<{ inspection_id: string }>();
+
+      const inspectionId = existing?.inspection_id || `insp_${body.hallId}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const status = body.status || 'VERIFIED';
+
+      const stmts: D1PreparedStatement[] = [
+        // 1. Upsert location_inspections
+        env.DB.prepare(`
+          INSERT INTO location_inspections (
+            inspection_id, hall_id, location_code, reference_import_id,
+            status, operator_id, is_empty_confirmed, notes, completed_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(inspection_id) DO UPDATE SET
+            status = excluded.status,
+            operator_id = excluded.operator_id,
+            is_empty_confirmed = excluded.is_empty_confirmed,
+            notes = excluded.notes,
+            completed_at = excluded.completed_at
+        `).bind(
+          inspectionId,
+          body.hallId,
+          body.locationCode,
+          importId,
+          status,
+          user.email,
+          body.isEmptyConfirmed ? 1 : 0,
+          body.notes || null,
+          nowUtc
+        ),
+
+        // 2. Clear previous sku_inspections for clean replace
+        env.DB.prepare(`DELETE FROM sku_inspections WHERE inspection_id = ?`).bind(inspectionId),
+      ];
+
+      // 3. Insert new sku_inspections
+      for (const item of body.skus || []) {
+        const skuInspId = `sinsp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        stmts.push(
+          env.DB.prepare(`
+            INSERT INTO sku_inspections (
+              id, inspection_id, sku, barcode, e_barcode,
+              system_qty, actual_qty, difference_qty, discrepancy_type, notes, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).bind(
+            skuInspId,
+            inspectionId,
+            item.sku || null,
+            item.barcode || null,
+            item.eBarcode || null,
+            item.systemQty || 0,
+            item.actualQty ?? 0,
+            item.differenceQty ?? 0,
+            item.discrepancyType || 'NORMAL',
+            item.notes || null,
+            nowUtc
+          )
+        );
+      }
+
+      // 4. Save photo links if provided
+      for (const p of body.photos || []) {
+        stmts.push(
+          env.DB.prepare(`
+            INSERT OR IGNORE INTO inspection_photos (photo_id, inspection_id, object_key, captured_at)
+            VALUES (?, ?, ?, ?)
+          `).bind(
+            p.photoId || `photo_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            inspectionId,
+            p.objectKey,
+            nowUtc
+          )
+        );
+      }
+
+      // 5. Audit event
+      stmts.push(
+        env.DB.prepare(`
+          INSERT INTO audit_events (event_id, event_type, user_id, hall_id, details_json, created_at)
+          VALUES (?, 'LOCATION_INSPECTED', ?, ?, ?, ?)
+        `).bind(
+          `evt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          user.userId,
+          body.hallId,
+          JSON.stringify({
+            locationCode: body.locationCode,
+            inspectionId,
+            status,
+            skuCount: body.skus?.length || 0,
+            isEmptyConfirmed: Boolean(body.isEmptyConfirmed),
+          }),
+          nowUtc
+        )
+      );
+
+      await env.DB.batch(stmts);
+
+      return Response.json({
+        success: true,
+        inspectionId,
+        status,
+        savedAt: nowUtc,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return Response.json({ success: false, error: msg }, { status: 500 });
+    }
+  }
+
+  // 12. POST /api/inventory/inspection/photo (Upload inspection photo to R2)
+  if (path === '/api/inventory/inspection/photo' && request.method === 'POST') {
+    if (!env.PHOTO_BUCKET) {
+      return Response.json({ success: false, error: 'PHOTO_BUCKET R2 binding not configured' }, { status: 500 });
+    }
+
+    try {
+      const formData = await request.formData();
+      const file = formData.get('photo');
+      const hallId = String(formData.get('hallId') || 'H1');
+      const locationCode = String(formData.get('locationCode') || 'general');
+
+      if (!file || typeof file === 'string' || typeof (file as Blob).arrayBuffer !== 'function') {
+        return Response.json({ success: false, error: 'Valid image file required' }, { status: 400 });
+      }
+
+      const fileObj = file as unknown as File;
+      const buffer = await fileObj.arrayBuffer();
+      const mimeType = fileObj.type || 'image/jpeg';
+      const timestamp = Date.now();
+      const rand = Math.random().toString(36).substring(2, 7);
+      const sanitizedLoc = locationCode.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const photoId = `p_${timestamp}_${rand}`;
+      const objectKey = `inspections/${hallId}/${sanitizedLoc}/${photoId}.jpg`;
+
+      await env.PHOTO_BUCKET.put(objectKey, buffer, {
+        httpMetadata: { contentType: mimeType },
+        customMetadata: {
+          uploadedBy: user.email,
+          hallId,
+          locationCode,
+          uploadedAt: new Date().toISOString(),
+        },
+      });
+
+      return Response.json({
+        success: true,
+        photoId,
+        objectKey,
+        previewUrl: `/api/inventory/inspection/photo?key=${encodeURIComponent(objectKey)}`,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return Response.json({ success: false, error: msg }, { status: 500 });
+    }
+  }
+
+  // 13. GET /api/inventory/inspection/photo?key=... (Fetch private inspection photo)
+  if (path === '/api/inventory/inspection/photo' && request.method === 'GET') {
+    const key = url.searchParams.get('key');
+    if (!key || !env.PHOTO_BUCKET) {
+      return Response.json({ success: false, error: 'key required and bucket active' }, { status: 400 });
+    }
+
+    try {
+      const object = await env.PHOTO_BUCKET.get(key);
+      if (!object) {
+        return Response.json({ success: false, error: 'Photo not found' }, { status: 404 });
+      }
+
+      const headers = new Headers();
+      object.writeHttpMetadata(headers);
+      headers.set('etag', object.httpEtag);
+      headers.set('Cache-Control', 'private, max-age=86400');
+      return new Response(object.body, { headers });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return Response.json({ success: false, error: msg }, { status: 500 });
+    }
+  }
+
   return Response.json({ error: 'Not found' }, { status: 404 });
 }

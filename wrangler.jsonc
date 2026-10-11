@@ -24,8 +24,6 @@
     }
   ],
   "vars": {
-    "ENVIRONMENT": "production",
-    "AUTH_MODE": "access",
-    "ADMIN_EMAILS": "salahdhy@gmail.com"
+    "ENVIRONMENT": "production"
   }
 }

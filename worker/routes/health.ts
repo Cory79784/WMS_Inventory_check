@@ -1,4 +1,5 @@
 import { Env } from '../types';
+import { ensureDatabaseSchema } from '../db/init';
 
 export async function handleHealthCheck(_request: Request, env: Env): Promise<Response> {
   const d1Healthy = Boolean(env.DB);
@@ -6,8 +7,11 @@ export async function handleHealthCheck(_request: Request, env: Env): Promise<Re
 
   let d1Details = 'untested';
   try {
-    const hallCount = await env.DB.prepare('SELECT count(*) as count FROM halls').first<{ count: number }>();
-    d1Details = `Connected (Halls count: ${hallCount?.count ?? 0})`;
+    if (env.DB) {
+      await ensureDatabaseSchema(env);
+      const hallCount = await env.DB.prepare('SELECT count(*) as count FROM halls').first<{ count: number }>();
+      d1Details = `Connected (Halls count: ${hallCount?.count ?? 0})`;
+    }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     d1Details = `Error: ${msg}`;
