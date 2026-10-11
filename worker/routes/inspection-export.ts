@@ -17,7 +17,12 @@ export async function exportInspectionResults(request: Request, env: Env): Promi
         COALESCE(s.system_qty, 0) as systemQty, COALESCE(s.actual_qty, 0) as actualQty,
         COALESCE(s.difference_qty, 0) as differenceQty, l.completed_at as completedAt,
         i.version_number as versionNumber, l.reference_import_id as referenceImportId,
-        l.notes as locationNotes, s.notes as skuNotes
+        l.notes as locationNotes, s.notes as skuNotes,
+        COALESCE((SELECT MAX(b.name_zh) FROM inventory_stock_rows b
+          WHERE b.import_id = l.reference_import_id AND b.hall_id = l.hall_id
+            AND UPPER(b.location_code) = UPPER(l.location_code) AND b.sku = s.sku), '') as nameZh,
+        s.discrepancy_type as discrepancyType,
+        l.status as status, l.is_empty_confirmed as isEmptyConfirmed, i.imported_at as importedAt
       FROM location_inspections l
       JOIN inventory_imports i ON i.import_id = l.reference_import_id
       LEFT JOIN sku_inspections s ON s.inspection_id = l.inspection_id

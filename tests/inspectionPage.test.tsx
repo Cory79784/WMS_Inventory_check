@@ -100,13 +100,64 @@ describe('PDA inspection UI interactions', () => {
         expect(container.textContent).toContain(code);
         expect(scanInput().value).toBe('');
       }
-      const save = button('保存本库位核查');
-      save.focus();
-      await click(save);
-      expect(document.activeElement).toBe(scanInput());
+      const focus = vi.spyOn(scanInput(), 'focus');
+      await click(button('保存本库位核查'));
+      await click(container.querySelector('[aria-label="下一库位"]')!);
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+      expect(focus).not.toHaveBeenCalled();
+      focus.mockRestore();
     } finally {
       Object.defineProperty(navigator, 'userAgent', { configurable: true, value: originalAgent });
     }
+  });
+  it('uses native manual keyboard control when supported and only shows it on keyboard-button request', async () => {
+    const originalAgent = navigator.userAgent;
+    const keyboard = { hide: vi.fn(), show: vi.fn() };
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Android PDA' });
+    Object.defineProperty(navigator, 'virtualKeyboard', { configurable: true, value: keyboard });
+    try {
+      await query('115-004-1');
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+      expect(scanInput().getAttribute('virtualkeyboardpolicy')).toBe('manual');
+      expect(keyboard.hide).toHaveBeenCalled();
+      expect(keyboard.show).not.toHaveBeenCalled();
+      await click(container.querySelector('[aria-label="手动输入库位"]')!);
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+      expect(keyboard.show).toHaveBeenCalledTimes(1);
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: originalAgent });
+      delete (navigator as any).virtualKeyboard;
+    }
+  });
+  it('confirms sparse empty locations and saves immediately with zero SKU rows', async () => {
+    const base = await api.fetchLocationAudit('H1', '115-005-1');
+    api.fetchLocationAudit.mockResolvedValueOnce({ ...base, hasBookStock: false, skus: [] });
+    await query('115-005-1');
+    await click(button('确认为空库位'));
+    expect(api.saveLocationInspection).toHaveBeenCalledWith(expect.objectContaining({
+      locationCode: '115-005-1', status: 'VERIFIED', isEmptyConfirmed: true, skus: [],
+    }));
+    expect(container.querySelector('[role="status"]')?.textContent).toBe('已保存');
+    expect(container.textContent).toContain('已确认空库位');
+  });
+  it('does not mark an empty location saved when its save fails', async () => {
+    const base = await api.fetchLocationAudit('H1', '115-006-1');
+    api.fetchLocationAudit.mockResolvedValueOnce({ ...base, hasBookStock: false, skus: [] });
+    api.saveLocationInspection.mockRejectedValueOnce(new Error('network'));
+    await query('115-006-1');
+    await click(button('确认为空库位'));
+    expect(container.textContent).toContain('保存失败');
+    expect(container.textContent).not.toContain('已确认空库位');
+    expect(container.querySelector('[role="status"]')).toBeNull();
+  });
+  it('shows the loaded location version upload date and time at the page footer', async () => {
+    const base = await api.fetchLocationAudit('H1', '115-007-1');
+    const importedAt = '2026-10-10T13:14:15Z';
+    api.fetchLocationAudit.mockResolvedValueOnce({ ...base, versionNumber: 3, importedAt });
+    await query('115-007-1');
+    const footer = container.querySelector('[data-testid="wms-import-time"]')!;
+    expect(footer.textContent).toContain('V3');
+    expect(footer.textContent).toContain(new Date(importedAt).toLocaleString('zh-CN', { hour12: false }));
   });
   it('saves unfinished inspection as IN_PROGRESS without invented zero actual counts', async () => {
     await query('111-028-1'); await click(button('保存本库位核查'));
@@ -183,7 +234,7 @@ describe('PDA inspection UI interactions', () => {
       status: 'VERIFIED', skus: [expect.objectContaining({ actualQty: 10, differenceQty: 0 })],
     }));
     expect(container.querySelector('[role="status"]')?.textContent).toContain('已保存');
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 550)); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 950)); });
     expect(container.querySelector('[role="status"]')).toBeNull();
     expect(container.textContent).toContain('已核查');
   });

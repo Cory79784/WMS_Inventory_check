@@ -100,6 +100,23 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
   const scanInputRef = useRef<HTMLInputElement>(null);
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const virtualKeyboard = (navigator as Navigator & {
+    virtualKeyboard?: { hide: () => void; show: () => void };
+  }).virtualKeyboard;
+  const focusScanner = (manual = false) => {
+    const input = scanInputRef.current;
+    if (!input) return;
+    // Older Android browsers cannot suppress a keyboard opened by focus().
+    // Keep existing scanner focus instead of reopening it after an operation.
+    if (androidScanner && !manual && !virtualKeyboard) return;
+    input.focus();
+    if (manual) virtualKeyboard?.show();
+    else if (androidScanner) virtualKeyboard?.hide();
+    else input.select();
+  };
+  const keepScannerFocus = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (androidScanner && !manualInput) event.preventDefault();
+  };
   const fileInputRef = useRef<HTMLInputElement>(null);
   const surplusFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -158,6 +175,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       return;
     }
     const id = ++requestId.current;
+    if (androidScanner && manualInput && !virtualKeyboard) scanInputRef.current?.blur();
     setManualInput(false);
     if (locData) locationDrafts.set(locationKey(locData.hallId, locData.locationCode, locData.referenceImportId), {
       data: locData, skus: skuList, photos, notes: locationNotes, empty: isEmptyConfirmed, uploads,
@@ -200,8 +218,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       setLoading(false);
       // Re-focus scanner input
       setTimeout(() => {
-        scanInputRef.current?.focus();
-        if (!androidScanner) scanInputRef.current?.select();
+        focusScanner();
       }, 0);
     }
   };
@@ -235,7 +252,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   useEffect(() => () => { if (scanTimer.current) clearTimeout(scanTimer.current); }, []);
   useEffect(() => {
     if (!saveSuccessMsg) return;
-    const timer = setTimeout(() => setSaveSuccessMsg(null), 500);
+    const timer = setTimeout(() => setSaveSuccessMsg(null), 900);
     return () => clearTimeout(timer);
   }, [saveSuccessMsg]);
 
@@ -281,10 +298,10 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   };
 
   // Confirm Empty Location
-  const handleConfirmEmpty = () => {
-    setIsEmptyConfirmed(true);
-    setSkuList([]);
-    triggerHaptic(true);
+  const handleConfirmEmpty = async () => {
+    if (saving || loading || photoBusy || photoFailed || uploadingSurplusPhoto) return;
+    if (skuList.length && !confirm('确认此库位为空？已记录的商品将清除并保存。')) return;
+    await handleSaveInspection([], true);
   };
 
   // Open Shortage Modal
@@ -539,11 +556,13 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       });
       if (activeKey.current !== key) return;
       setLocData(savedData);
+      setSkuList(items);
+      setIsEmptyConfirmed(empty);
       setUploads([]);
       setSaveSuccessMsg(incomplete ? '已暂存' : '已保存');
       triggerHaptic(true);
       // IME-based PDA scanners need an editable target after the save button took focus.
-      if (androidScanner) scanInputRef.current?.focus();
+      if (androidScanner) focusScanner();
 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -606,7 +625,8 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
               onKeyDown={handleScanKeyDown}
               placeholder="扫库位条码 / 输入库位 (如 109-047-1)"
               className="w-full bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-8 py-2.5 text-base font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 transition"
-              autoFocus
+              autoFocus={!androidScanner}
+              {...(androidScanner ? { virtualkeyboardpolicy: 'manual' } : {})}
               autoComplete="off"
               spellCheck={false}
               autoCapitalize="off"
@@ -634,7 +654,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             onClick={() => {
               scanInputRef.current?.blur();
               setManualInput(!manualInput);
-              setTimeout(() => scanInputRef.current?.focus(), 0);
+              setTimeout(() => focusScanner(!manualInput), 0);
             }}
             className="text-slate-600 bg-slate-100 px-2 rounded-lg"
           >
@@ -642,6 +662,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
           </button>
           <button
             type="button"
+            onPointerDown={keepScannerFocus}
             onClick={() => handleQueryLocation(inputLoc)}
             disabled={loading || saving || photoBusy || !inputLoc.trim()}
             className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold px-4 py-2.5 rounded-lg flex items-center gap-1 shadow-sm transition active:scale-95"
@@ -655,6 +676,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
           <div className="flex items-center justify-between gap-1 mt-2 pt-2 border-t border-slate-100 text-xs text-slate-500">
             <button
               type="button"
+              onPointerDown={keepScannerFocus}
               aria-label="上一库位"
               disabled={loading || saving || photoBusy || !locData.navigation.prevLocationCode}
               onClick={() => locData.navigation.prevLocationCode && handleQueryLocation(locData.navigation.prevLocationCode)}
@@ -666,6 +688,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             <strong className="font-mono text-blue-600 text-base">{locData.locationCode}</strong>
             <button
               type="button"
+              onPointerDown={keepScannerFocus}
               aria-label="下一库位"
               disabled={loading || saving || photoBusy || !locData.navigation.nextLocationCode}
               onClick={() => locData.navigation.nextLocationCode && handleQueryLocation(locData.navigation.nextLocationCode)}
@@ -714,6 +737,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
               {locData.hasBookStock && !isEmptyConfirmed && (
                 <button
                   type="button"
+                  onPointerDown={keepScannerFocus}
                   onClick={handleSetAllNormal}
                   disabled={saving || loading || photoBusy || photoFailed || uploadingSurplusPhoto}
                   className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-sm active:scale-95 transition"
@@ -741,6 +765,8 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 </div>
                 <button
                   type="button"
+                  onPointerDown={keepScannerFocus}
+                  disabled={saving || loading || photoBusy || photoFailed || uploadingSurplusPhoto}
                   onClick={handleConfirmEmpty}
                   className={`text-xs font-medium px-2.5 py-1 rounded transition ${
                     isEmptyConfirmed
@@ -962,12 +988,21 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
         </div>
       )}
 
+      <p className="text-xs text-slate-500 px-1" data-testid="wms-import-time">
+        WMS 库存依据：{locData ? `V${locData.versionNumber}` : activeVersionInfo ? `V${activeVersionInfo.version_number}` : '未发布'}
+        {' · 上传时间：'}
+        {(locData ? locData.importedAt : activeVersionInfo?.imported_at)
+          ? new Date((locData ? locData.importedAt : activeVersionInfo?.imported_at)!).toLocaleString('zh-CN', { hour12: false })
+          : '暂无上传时间'}
+      </p>
+
       {/* Floating Bottom Bar: Sticky Operation Controls */}
       {locData && (
         <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 p-2.5 z-40 shadow-lg">
           <div className="max-w-2xl mx-auto flex items-center gap-2">
             <button
               type="button"
+              onPointerDown={keepScannerFocus}
               onClick={() => handleSaveInspection()}
               disabled={saving || loading || photoBusy || photoFailed || uploadingSurplusPhoto}
               className="flex-1 bg-slate-800 hover:bg-slate-900 text-white font-semibold py-3 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition text-sm disabled:opacity-50"

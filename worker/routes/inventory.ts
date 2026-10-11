@@ -548,8 +548,8 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
 
       // Fetch active version metadata
       const impMeta = await env.DB.prepare(
-        `SELECT version_number, source_exported_at, original_filename FROM inventory_imports WHERE import_id = ?`
-      ).bind(importId).first<{ version_number: number; source_exported_at: string | null; original_filename: string }>();
+        `SELECT version_number, source_exported_at, imported_at, original_filename FROM inventory_imports WHERE import_id = ?`
+      ).bind(importId).first<{ version_number: number; source_exported_at: string | null; imported_at: string; original_filename: string }>();
 
       // Query stock rows for this location (supporting case-insensitive match)
       const stockRows = await env.DB.prepare(`
@@ -668,6 +668,7 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
           referenceImportId: importId,
           versionNumber: impMeta?.version_number ?? 1,
           sourceExportedAt: impMeta?.source_exported_at ?? null,
+          importedAt: impMeta?.imported_at ?? null,
           hasBookStock: stockRows.results.length > 0,
           lastInspection,
           skus: allSkus,

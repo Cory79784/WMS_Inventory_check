@@ -16,7 +16,7 @@ describe('Excel inspection results', () => {
     const loaded: string[] = [];
     const workbook = await buildInspectionWorkbook([
       row, { ...row, sku: 'SKU-2', actualQty: 10, differenceQty: 0 },
-      { ...row, locationCode: '109-029-1', sku: '空库位', systemQty: 0, actualQty: 0,
+      { ...row, inspectionId: 'empty', isEmptyConfirmed: true, locationCode: '109-029-1', sku: '空库位', systemQty: 0, actualQty: 0,
         differenceQty: 0, photoKeys: [] },
     ], async (key) => {
       loaded.push(key);
@@ -31,18 +31,23 @@ describe('Excel inspection results', () => {
     expect(sheet.getRow(2).getCell(3).value).toBe('SKU-1');
     expect(sheet.getRow(1).getCell(4).value).toBe('Barcode');
     expect(sheet.getRow(2).getCell(4).value).toBe('');
-    expect(sheet.getRow(1).getCell(1).fill).toMatchObject({ type: 'pattern', fgColor: { argb: 'FF1E293B' } });
-    expect(sheet.getRow(2).getCell(5).value).toBe(10);
-    expect(sheet.getRow(2).getCell(6).value).toBe(8);
-    expect(sheet.getRow(2).getCell(7).value).toBe(-2);
-    expect(sheet.getRow(2).getCell(9).value).toBe('V1 (old-locked-version)');
+    expect(sheet.getRow(1).getCell(1).fill).toMatchObject({ type: 'pattern', fgColor: { argb: 'FF196579' } });
+    expect(sheet.getRow(2).getCell(6).value).toBe(10);
+    expect(sheet.getRow(2).getCell(7).value).toBe(8);
+    expect(sheet.getRow(2).getCell(8).value).toBe(-2);
+    expect(sheet.getRow(2).getCell(12).value).toBe('V1 (old-locked-version)');
     expect(sheet.getRow(4).getCell(3).value).toBe('空库位');
+    expect(sheet.getRow(2).getCell(1).border.right).toMatchObject({ style: 'thin' });
+    expect(sheet.getRow(2).getCell(16).border.right).toMatchObject({ style: 'thin' });
+    expect(sheet.getRow(3).getCell(1).border.bottom).toMatchObject({ style: 'medium' });
+    expect(sheet.getRow(2).getCell(9).fill).toMatchObject({ fgColor: { argb: 'FFFFF0E5' } });
+    expect(sheet.getRow(4).getCell(1).fill).toMatchObject({ fgColor: { argb: 'FFEAF5F1' } });
     const images = sheet.getImages();
     expect(images).toHaveLength(4);
     expect(images[0].range.tl.nativeRow).toBe(1);
     expect(images[1].range.tl.nativeRow).toBe(1);
-    expect(images[0].range.tl.nativeCol).toBe(10);
-    expect(images[1].range.tl.nativeCol).toBe(11);
+    expect(images[0].range.tl.nativeCol).toBe(14);
+    expect(images[1].range.tl.nativeCol).toBe(15);
     expect(loaded).toEqual(['a', 'b']);
     const zip = await JSZip.loadAsync(buffer);
     const media = Object.keys(zip.files).filter((name) => name.startsWith('xl/media/') && !zip.files[name].dir);

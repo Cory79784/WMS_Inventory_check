@@ -19,33 +19,64 @@ export async function buildInspectionWorkbook(
     { header: '库位', key: 'locationCode', width: 16 },
     { header: 'SKU', key: 'sku', width: 24 },
     { header: 'Barcode', key: 'barcode', width: 24 },
+    { header: '商品名称', key: 'nameZh', width: 26 },
     { header: '账面数量', key: 'systemQty', width: 12 },
     { header: '实盘数量', key: 'actualQty', width: 12 },
     { header: '差异', key: 'differenceQty', width: 12 },
+    { header: '差异类型', key: 'discrepancyLabel', width: 16 },
+    { header: '核查状态', key: 'statusLabel', width: 12 },
     { header: '核查时间', key: 'completedAt', width: 26 },
     { header: 'WMS 版本', key: 'version', width: 28 },
+    { header: 'WMS 导入时间', key: 'importedAt', width: 26 },
     { header: '备注', key: 'notes', width: 36 },
     ...Array.from({ length: photoCount }, (_, index) => ({ header: `照片 ${index + 1}`, width: 24 })),
   ];
   sheet.getRow(1).font = { bold: true };
   sheet.views = [{ state: 'frozen', ySplit: 1 }];
-  sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 10 + photoCount } };
-  sheet.getRow(1).height = 24;
+  sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 14 + photoCount } };
+  sheet.getRow(1).height = 32;
   sheet.getRow(1).eachCell((cell) => {
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF196579' } };
     cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    cell.border = { bottom: { style: 'medium', color: { argb: 'FF57B9D8' } } };
   });
   const images = new Map<string, Promise<{ id: number; width: number; height: number }>>();
-  for (const result of rows) {
-    const row = sheet.addRow({ ...result, version: `V${result.versionNumber} (${result.referenceImportId})` });
-    row.alignment = { vertical: 'middle', wrapText: true };
-    row.height = result.photoKeys.length ? 90 : 30;
-    row.eachCell({ includeEmpty: true }, (cell) => {
-      cell.border = { bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
-      if (row.number % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+  const discrepancyLabels: Record<string, string> = {
+    NORMAL: '正常', SHORTAGE: '少货', SURPLUS: '多货', UNEXPECTED_SKU: '账外SKU', NO_SKU_SURPLUS: '无SKU多货',
+  };
+  for (const [resultIndex, result] of rows.entries()) {
+    const row = sheet.addRow({ ...result,
+      version: `V${result.versionNumber} (${result.referenceImportId})`,
+      discrepancyLabel: result.isEmptyConfirmed ? '确认空库位'
+        : discrepancyLabels[result.discrepancyType || ''] || (result.differenceQty < 0 ? '少货' : result.differenceQty > 0 ? '多货' : '正常'),
+      statusLabel: result.status === 'PENDING_REVIEW' ? '待复核' : '已核查',
     });
-    if (result.differenceQty !== 0) row.getCell('differenceQty').font = { bold: true, color: { argb: 'FFDC2626' } };
+    row.font = { name: 'Calibri', size: 11, color: { argb: 'FF173644' } };
+    row.alignment = { vertical: 'middle', wrapText: true };
+    row.height = result.photoKeys.length ? 90 : 32;
+    const next = rows[resultIndex + 1];
+    const groupEnd = !next || next.inspectionId !== result.inspectionId;
+    const abnormal = result.differenceQty !== 0 || (result.discrepancyType && result.discrepancyType !== 'NORMAL');
+    for (let column = 1; column <= 14 + photoCount; column++) {
+      const cell = row.getCell(column);
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF9FCBDC' } },
+        left: { style: 'thin', color: { argb: 'FF9FCBDC' } },
+        right: { style: 'thin', color: { argb: 'FF9FCBDC' } },
+        bottom: { style: groupEnd ? 'medium' : 'thin', color: { argb: 'FF57B9D8' } },
+      };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb:
+        result.isEmptyConfirmed ? 'FFEAF5F1' : row.number % 2 === 0 ? 'FFC3E7F2' : 'FFF3F8FA',
+      } };
+      if (abnormal && (column === 9 || column === 10)) {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF0E5' } };
+      }
+      if (column >= 6 && column <= 8) cell.alignment = { vertical: 'middle', horizontal: 'right' };
+    }
+    if (result.differenceQty !== 0) row.getCell('differenceQty').font = {
+      bold: true, color: { argb: result.differenceQty < 0 ? 'FFDC2626' : 'FFC26B00' },
+    };
     for (let index = 0; index < result.photoKeys.length; index++) {
       const key = result.photoKeys[index];
       if (!images.has(key)) {
@@ -58,7 +89,7 @@ export async function buildInspectionWorkbook(
       const scale = Math.min(160 / image.width, 110 / image.height);
       // Only the display dimensions change; the original image bytes are embedded unchanged.
       sheet.addImage(image.id, {
-        tl: { col: 10 + index + 0.05, row: row.number - 1 + 0.05 },
+        tl: { col: 14 + index + 0.05, row: row.number - 1 + 0.05 },
         ext: { width: image.width * scale, height: image.height * scale },
         editAs: 'oneCell',
       });

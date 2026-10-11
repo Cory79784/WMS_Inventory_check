@@ -90,6 +90,11 @@ export interface InspectionExportRow {
   referenceImportId: string;
   notes: string;
   photoKeys: string[];
+  nameZh?: string;
+  discrepancyType?: string;
+  status?: string;
+  isEmptyConfirmed?: boolean;
+  importedAt?: string | null;
 }
 
 export interface LocationAuditData {
@@ -98,6 +103,7 @@ export interface LocationAuditData {
   referenceImportId: string;
   versionNumber: number;
   sourceExportedAt: string | null;
+  importedAt?: string | null;
   hasBookStock: boolean;
   lastInspection?: { completedAt: string; versionNumber: number } | null;
   skus: LocationSkuItem[];

@@ -38,6 +38,8 @@ describe('Real local D1/R2 inspection API', () => {
     expect(response.status).toBe(200);
     const { rows } = await response.json() as any;
     expect(rows.map((r: any) => r.sku)).toEqual(['N', 'D', '无sku']);
+    expect(rows.every((r: any) => r.importedAt && r.status)).toBe(true);
+    expect(rows[2].isEmptyConfirmed).toBe(1);
     expect(rows.every((r: any) => r.referenceImportId === 'v1' && r.versionNumber === 1)).toBe(true);
   });
   it('exports only inventory anomalies in differences mode', async () => {
@@ -91,6 +93,7 @@ describe('Real local D1/R2 inspection API', () => {
     });
     expect(response.status).toBe(200);
     const reloaded = await (await mf.dispatchFetch('http://localhost/api/inventory/location?hallId=H1&locationCode=109-033-1')).json() as any;
+    expect(reloaded.data.importedAt).toBeTruthy();
     expect(reloaded.data.inspection.photos).toEqual([{ photoId: 'reload-photo', objectKey: 'original.png' }]);
     expect(reloaded.data.navigation.prevLocationCode).toBe('109-032-1');
     expect(reloaded.data.navigation.nextLocationCode).toBe('109-034-1');
