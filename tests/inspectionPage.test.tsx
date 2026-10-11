@@ -100,12 +100,15 @@ describe('PDA inspection UI interactions', () => {
         expect(container.textContent).toContain(code);
         expect(scanInput().value).toBe('');
       }
-      const focus = vi.spyOn(scanInput(), 'focus');
+      button('保存本库位核查').focus();
       await click(button('保存本库位核查'));
-      await click(container.querySelector('[aria-label="下一库位"]')!);
+      expect(document.activeElement).toBe(scanInput());
+      const next = container.querySelector('[aria-label="下一库位"]') as HTMLButtonElement;
+      next.focus();
+      await click(next);
       await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
-      expect(focus).not.toHaveBeenCalled();
-      focus.mockRestore();
+      expect(document.activeElement).toBe(scanInput());
+      expect(scanInput().readOnly).toBe(false);
     } finally {
       Object.defineProperty(navigator, 'userAgent', { configurable: true, value: originalAgent });
     }
@@ -121,9 +124,54 @@ describe('PDA inspection UI interactions', () => {
       expect(scanInput().getAttribute('virtualkeyboardpolicy')).toBe('manual');
       expect(keyboard.hide).toHaveBeenCalled();
       expect(keyboard.show).not.toHaveBeenCalled();
+      await act(async () => {
+        container.querySelector('[aria-label="手动输入库位"]')!.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+        expect(keyboard.show).toHaveBeenCalledTimes(1);
+        expect(document.activeElement).toBe(scanInput());
+        expect(scanInput().inputMode).toBe('text');
+        expect(scanInput().getAttribute('virtualkeyboardpolicy')).toBe('auto');
+      });
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: originalAgent });
+      delete (navigator as any).virtualKeyboard;
+    }
+  });
+  it('focuses an editable scanner on initial Android mount without any keyboard API', async () => {
+    const originalAgent = navigator.userAgent;
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Android PDA' });
+    try {
+      await act(async () => root.unmount());
+      root = createRoot(container);
+      await act(async () => root.render(<Page currentHall="H1" onOpenImport={() => {}} onOpenTest={() => {}} />));
+      expect(document.activeElement).toBe(scanInput());
+      expect(scanInput().readOnly).toBe(false);
+      expect(scanInput().getAttribute('virtualkeyboardpolicy')).toBe('auto');
+      expect(scanInput().inputMode).not.toBe('none');
+      await query('115-008-1');
+      expect(api.fetchLocationAudit).toHaveBeenCalledWith('H1', '115-008-1');
       await click(container.querySelector('[aria-label="手动输入库位"]')!);
+      expect(document.activeElement).toBe(scanInput());
+      expect(scanInput().inputMode).toBe('text');
+      expect(scanInput().readOnly).toBe(false);
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: originalAgent });
+    }
+  });
+  it('keeps the ordinary keyboard path enabled if the experimental API throws', async () => {
+    const originalAgent = navigator.userAgent;
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Android PDA' });
+    Object.defineProperty(navigator, 'virtualKeyboard', { configurable: true, value: {
+      hide: vi.fn(() => { throw new Error('unsupported'); }),
+      show: vi.fn(() => { throw new Error('activation denied'); }),
+    } });
+    try {
+      await query('115-009-1');
       await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
-      expect(keyboard.show).toHaveBeenCalledTimes(1);
+      await click(container.querySelector('[aria-label="手动输入库位"]')!);
+      expect(document.activeElement).toBe(scanInput());
+      expect(scanInput().getAttribute('virtualkeyboardpolicy')).toBe('auto');
+      expect(scanInput().inputMode).toBe('text');
+      expect(scanInput().readOnly).toBe(false);
     } finally {
       Object.defineProperty(navigator, 'userAgent', { configurable: true, value: originalAgent });
       delete (navigator as any).virtualKeyboard;
@@ -162,6 +210,120 @@ describe('PDA inspection UI interactions', () => {
   it('saves unfinished inspection as IN_PROGRESS without invented zero actual counts', async () => {
     await query('111-028-1'); await click(button('保存本库位核查'));
     expect(api.saveLocationInspection).toHaveBeenCalledWith(expect.objectContaining({ status: 'IN_PROGRESS', skus: [] }));
+  });
+  it('scans a shortage return code into the modal without querying another location and saves it', async () => {
+    await query('116-001-1');
+    await click(button('少货'));
+    await click(container.querySelector('input[type="checkbox"]')!);
+    const code = container.querySelector('[aria-label="退货码或跟踪号"]') as HTMLInputElement;
+    expect(document.activeElement).toBe(code);
+    const previousQueries = api.fetchLocationAudit.mock.calls.length;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(code, 'RET-001');
+      code.dispatchEvent(new window.Event('input', { bubbles: true }));
+      code.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    expect(api.fetchLocationAudit).toHaveBeenCalledTimes(previousQueries);
+    await click(button('确认少货'));
+    await click(button('保存本库位核查'));
+    expect(api.saveLocationInspection).toHaveBeenCalledWith(expect.objectContaining({ skus: [expect.objectContaining({
+      discrepancyType: 'SHORTAGE', actualQty: 9, isReturn: true, returnCode: 'RET-001',
+    })] }));
+    expect(container.textContent).toContain('RET-001');
+  });
+  it('marks surplus as a return, preserves the tracking code, and clears it when changed to normal', async () => {
+    await query('116-002-1');
+    await click(button('正常'));
+    await click(button('+ 现场多货'));
+    const sku = container.querySelector('input[placeholder="扫描或输入多货 SKU..."]')
+      || Array.from(container.querySelectorAll('input')).find(input => input.placeholder.includes('SKU'))!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(sku, 'RETURN-SKU');
+      sku.dispatchEvent(new window.Event('input', { bubbles: true }));
+    });
+    await click(container.querySelector('input[type="checkbox"]')!);
+    const code = container.querySelector('[aria-label="退货码或跟踪号"]') as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(code, 'TRACK-02');
+      code.dispatchEvent(new window.Event('input', { bubbles: true }));
+      code.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    });
+    await click(button('确认添加多货'));
+    await click(button('保存本库位核查'));
+    expect(api.saveLocationInspection).toHaveBeenCalledWith(expect.objectContaining({ skus: expect.arrayContaining([
+      expect.objectContaining({ sku: 'RETURN-SKU', discrepancyType: 'SURPLUS', isReturn: true, returnCode: 'TRACK-02' }),
+    ]) }));
+    await click(button('一键全相符 (正常)'));
+    expect(api.saveLocationInspection.mock.lastCall![0].skus.every((item: any) => !item.isReturn && !item.returnCode)).toBe(true);
+  });
+  it('updates only the chosen row when return surplus shares the book-stock SKU', async () => {
+    const base = await api.fetchLocationAudit('H1', '116-003-1');
+    api.fetchLocationAudit.mockResolvedValueOnce({ ...base, skus: [base.skus[0], {
+      ...base.skus[0], systemQty: 0, actualQty: 2, differenceQty: 2, discrepancyType: 'SURPLUS', isReturn: true, returnCode: 'KEEP-RET',
+    }] });
+    await query('116-003-1');
+    await click(button('正常'));
+    await click(button('保存本库位核查'));
+    expect(api.saveLocationInspection.mock.lastCall![0].skus).toEqual([
+      expect.objectContaining({ systemQty: 10, actualQty: 10, isReturn: false }),
+      expect.objectContaining({ systemQty: 0, actualQty: 2, isReturn: true, returnCode: 'KEEP-RET' }),
+    ]);
+    await click(button('少货'));
+    await click(button('确认少货'));
+    await click(button('保存本库位核查'));
+    expect(api.saveLocationInspection.mock.lastCall![0].skus[1]).toMatchObject({ actualQty: 2, isReturn: true, returnCode: 'KEEP-RET' });
+  });
+  it('enables modal keyboards synchronously and resumes scanner mode after closing', async () => {
+    await query('116-004-1');
+    await click(button('+ 现场多货'));
+    const sku = container.querySelector('input[placeholder="扫描或输入外箱 SKU"]') as HTMLInputElement;
+    expect(document.activeElement).toBe(sku);
+    await act(async () => {
+      container.querySelector('[aria-label="手动输入"]')!.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+      expect(document.activeElement).toBe(sku);
+      expect(sku.inputMode).toBe('text');
+    });
+    await click(button('扫/输 条码'));
+    const barcode = container.querySelector('input[placeholder="扫描外箱 Barcode / eBarcode"]') as HTMLInputElement;
+    expect(document.activeElement).toBe(barcode);
+    await click(button('取消'));
+    expect(document.activeElement).toBe(scanInput());
+    expect(scanInput().inputMode).toBe('none');
+    await query('116-005-1');
+    expect(api.fetchLocationAudit).toHaveBeenCalledWith('H1', '116-005-1');
+  });
+  it.each([
+    ['shortage', false, '117-001-1'], ['shortage', true, '117-002-1'],
+    ['surplus', false, '117-003-1'], ['surplus', true, '117-004-1'],
+  ] as const)('allows %s saving with optional return checkbox %s and no scanned code', async (kind, isReturn, location) => {
+    await query(location);
+    if (kind === 'shortage') await click(button('少货'));
+    else {
+      await click(button('正常'));
+      await click(button('+ 现场多货'));
+      const sku = container.querySelector('input[placeholder="扫描或输入外箱 SKU"]') as HTMLInputElement;
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(sku, 'OPTIONAL-RETURN');
+        sku.dispatchEvent(new window.Event('input', { bubbles: true }));
+      });
+    }
+    const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+    expect(checkbox.required).toBe(false);
+    if (isReturn) {
+      await click(checkbox);
+      const code = container.querySelector('[aria-label="退货码或跟踪号"]') as HTMLInputElement;
+      expect(code.value).toBe('');
+      expect(code.required).toBe(false);
+    } else expect(container.querySelector('[aria-label="退货码或跟踪号"]')).toBeNull();
+    await click(button(kind === 'shortage' ? '确认少货' : '确认添加多货'));
+    await click(button('保存本库位核查'));
+    expect(api.saveLocationInspection).toHaveBeenCalledWith(expect.objectContaining({
+      locationCode: location, skus: expect.arrayContaining([expect.objectContaining({
+        discrepancyType: kind === 'shortage' ? 'SHORTAGE' : 'SURPLUS', isReturn, returnCode: '',
+      })]),
+    }));
+    expect(globalThis.alert).not.toHaveBeenCalled();
   });
   it('displays actual progress, preserves failed original File for retry and blocks saving during upload', async () => {
     await query('112-028-1');

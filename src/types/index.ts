@@ -68,6 +68,8 @@ export interface LocationSkuItem {
   differenceQty: number | null;
   discrepancyType: 'NORMAL' | 'SURPLUS' | 'SHORTAGE' | 'UNEXPECTED_SKU' | 'NO_SKU_SURPLUS' | null;
   notes?: string;
+  isReturn?: boolean;
+  returnCode?: string;
 }
 
 export interface InspectionPhotoItem {
@@ -95,6 +97,8 @@ export interface InspectionExportRow {
   status?: string;
   isEmptyConfirmed?: boolean;
   importedAt?: string | null;
+  isReturn?: boolean;
+  returnCode?: string;
 }
 
 export interface LocationAuditData {

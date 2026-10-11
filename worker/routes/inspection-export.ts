@@ -1,5 +1,6 @@
 import { Env } from '../types';
 import type { InspectionExportRow } from '../../src/types';
+import { decodeInspectionNotes } from '../../src/utils/inspectionNotes';
 
 export async function exportInspectionResults(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
@@ -47,10 +48,11 @@ export async function exportInspectionResults(request: Request, env: Env): Promi
     }
     const rows: InspectionExportRow[] = result.results.map(({ locationNotes, skuNotes, ...row }) => ({
       ...row,
+      ...decodeInspectionNotes(skuNotes),
       // Older barcode-only/unknown records used these UI labels as their SKU.
       sku: row.sku === '空库位' || row.sku === '无SKU未知品' || row.sku.startsWith('条码:')
         ? (row.barcode ? '' : '无sku') : row.sku || (row.barcode ? '' : '无sku'),
-      notes: [locationNotes, skuNotes].filter(Boolean).join('；'),
+      notes: [locationNotes, decodeInspectionNotes(skuNotes).notes].filter(Boolean).join('；'),
       photoKeys: photoKeys.get(row.inspectionId) || [],
     }));
     return Response.json({ success: true, rows });

@@ -29,11 +29,14 @@ export async function buildInspectionWorkbook(
     { header: 'WMS 版本', key: 'version', width: 28 },
     { header: 'WMS 导入时间', key: 'importedAt', width: 26 },
     { header: '备注', key: 'notes', width: 36 },
+    { header: '照片标记', key: 'photoLabel', width: 20 },
+    { header: '是否退货', key: 'returnLabel', width: 12 },
+    { header: '退货码或跟踪号（如有）', key: 'returnCode', width: 28 },
     ...Array.from({ length: photoCount }, (_, index) => ({ header: `照片 ${index + 1}`, width: 24 })),
   ];
   sheet.getRow(1).font = { bold: true };
   sheet.views = [{ state: 'frozen', ySplit: 1 }];
-  sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 14 + photoCount } };
+  sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 17 + photoCount } };
   sheet.getRow(1).height = 32;
   sheet.getRow(1).eachCell((cell) => {
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -42,6 +45,8 @@ export async function buildInspectionWorkbook(
     cell.border = { bottom: { style: 'medium', color: { argb: 'FF57B9D8' } } };
   });
   const images = new Map<string, Promise<{ id: number; width: number; height: number }>>();
+  const abnormalInspections = new Set(rows.filter(result => result.differenceQty !== 0
+    || (result.discrepancyType && result.discrepancyType !== 'NORMAL')).map(result => result.inspectionId));
   const discrepancyLabels: Record<string, string> = {
     NORMAL: '正常', SHORTAGE: '少货', SURPLUS: '多货', UNEXPECTED_SKU: '账外SKU', NO_SKU_SURPLUS: '无SKU多货',
   };
@@ -51,6 +56,10 @@ export async function buildInspectionWorkbook(
       discrepancyLabel: result.isEmptyConfirmed ? '确认空库位'
         : discrepancyLabels[result.discrepancyType || ''] || (result.differenceQty < 0 ? '少货' : result.differenceQty > 0 ? '多货' : '正常'),
       statusLabel: result.status === 'PENDING_REVIEW' ? '待复核' : '已核查',
+      photoLabel: result.photoKeys.length && !abnormalInspections.has(result.inspectionId)
+        && result.status !== 'PENDING_REVIEW' ? '正常·有照片' : '',
+      returnLabel: result.isReturn ? '是' : '',
+      returnCode: result.isReturn ? result.returnCode || '' : '',
     });
     row.font = { name: 'Calibri', size: 11, color: { argb: 'FF173644' } };
     row.alignment = { vertical: 'middle', wrapText: true };
@@ -58,7 +67,7 @@ export async function buildInspectionWorkbook(
     const next = rows[resultIndex + 1];
     const groupEnd = !next || next.inspectionId !== result.inspectionId;
     const abnormal = result.differenceQty !== 0 || (result.discrepancyType && result.discrepancyType !== 'NORMAL');
-    for (let column = 1; column <= 14 + photoCount; column++) {
+    for (let column = 1; column <= 17 + photoCount; column++) {
       const cell = row.getCell(column);
       cell.border = {
         top: { style: 'thin', color: { argb: 'FF9FCBDC' } },
@@ -71,6 +80,10 @@ export async function buildInspectionWorkbook(
       } };
       if (abnormal && (column === 9 || column === 10)) {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF0E5' } };
+      }
+      if (column === 15 && cell.value) {
+        cell.font = { bold: true, color: { argb: 'FF196579' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F6F1' } };
       }
       if (column >= 6 && column <= 8) cell.alignment = { vertical: 'middle', horizontal: 'right' };
     }
@@ -89,7 +102,7 @@ export async function buildInspectionWorkbook(
       const scale = Math.min(160 / image.width, 110 / image.height);
       // Only the display dimensions change; the original image bytes are embedded unchanged.
       sheet.addImage(image.id, {
-        tl: { col: 14 + index + 0.05, row: row.number - 1 + 0.05 },
+        tl: { col: 17 + index + 0.05, row: row.number - 1 + 0.05 },
         ext: { width: image.width * scale, height: image.height * scale },
         editAs: 'oneCell',
       });

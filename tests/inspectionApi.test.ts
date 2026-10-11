@@ -156,4 +156,82 @@ describe('Real local D1/R2 inspection API', () => {
     }
   });
 
+  it('persists shortage and surplus return metadata through reload and both exports, then clears it on update', async () => {
+    const db = await mf.getD1Database('DB');
+    await db.prepare(`INSERT INTO inventory_stock_rows (id,import_id,hall_id,location_code,sku,system_qty)
+      VALUES ('return-book','v2','H1','109-060-1','RETURN-BOOK',10)`).run();
+    const payload = { hallId: 'H1', locationCode: '109-060-1', referenceImportId: 'v2', status: 'PENDING_REVIEW',
+      notes: '库位备注', skus: [
+        { sku: 'RETURN-BOOK', systemQty: 10, actualQty: 8, differenceQty: -2, discrepancyType: 'SHORTAGE',
+          notes: '少货备注', isReturn: true, returnCode: '000SHORT' },
+        { sku: 'RETURN-EXTRA', systemQty: 0, actualQty: 3, differenceQty: 3, discrepancyType: 'SURPLUS',
+          notes: '退货多货备注', isReturn: true, returnCode: '0001234567' },
+      ] };
+    const save = async (body: any) => {
+      const response = await mf.dispatchFetch('http://localhost/api/inventory/inspection/save', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(200);
+      return response.json() as any;
+    };
+    const saved = await save(payload);
+    const reload = async () => (await (await mf.dispatchFetch('http://localhost/api/inventory/location?hallId=H1&locationCode=109-060-1')).json() as any).data;
+    expect((await reload()).skus).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sku: 'RETURN-BOOK', notes: '少货备注', isReturn: true, returnCode: '000SHORT' }),
+      expect.objectContaining({ sku: 'RETURN-EXTRA', nameZh: '退货多货备注', isReturn: true, returnCode: '0001234567' }),
+    ]));
+    for (const mode of ['all', 'differences']) {
+      const result = await (await mf.dispatchFetch(`http://localhost/api/inventory/inspection/export?hallId=H1&mode=${mode}`)).json() as any;
+      const rows = result.rows.filter((row: any) => row.inspectionId === saved.inspectionId);
+      expect(rows).toHaveLength(2);
+      expect(rows.map((row: any) => row.returnCode).sort()).toEqual(['0001234567', '000SHORT']);
+      expect(rows.every((row: any) => row.isReturn && row.notes.startsWith('库位备注；') && !row.notes.includes('@wms-return'))).toBe(true);
+    }
+    await save({ ...payload, skus: payload.skus.map(item => ({ ...item, isReturn: false })) });
+    expect((await reload()).skus.every((item: any) => !item.isReturn && item.returnCode === '')).toBe(true);
+  });
+
+  it('keeps an additional return row sharing a WMS SKU when the location is reloaded', async () => {
+    const db = await mf.getD1Database('DB');
+    await db.prepare(`INSERT INTO inventory_stock_rows (id,import_id,hall_id,location_code,sku,system_qty)
+      VALUES ('same-return-book','v2','H1','109-061-1','SHARED-SKU',10)`).run();
+    const response = await mf.dispatchFetch('http://localhost/api/inventory/inspection/save', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hallId: 'H1', locationCode: '109-061-1', referenceImportId: 'v2', status: 'PENDING_REVIEW', skus: [
+        { sku: 'SHARED-SKU', systemQty: 10, actualQty: 10, differenceQty: 0, discrepancyType: 'NORMAL' },
+        { sku: 'SHARED-SKU', systemQty: 0, actualQty: 2, differenceQty: 2, discrepancyType: 'SURPLUS', isReturn: true, returnCode: 'SHARED-RET' },
+      ] }),
+    });
+    expect(response.status).toBe(200);
+    const result = await (await mf.dispatchFetch('http://localhost/api/inventory/location?hallId=H1&locationCode=109-061-1')).json() as any;
+    expect(result.data.skus).toHaveLength(2);
+    expect(result.data.skus[0]).toMatchObject({ sku: 'SHARED-SKU', systemQty: 10, actualQty: 10, discrepancyType: 'NORMAL' });
+    expect(result.data.skus[1]).toMatchObject({ sku: 'SHARED-SKU', systemQty: 0, actualQty: 2, isReturn: true, returnCode: 'SHARED-RET' });
+  });
+
+  it('accepts unchecked returns and checked returns without codes for shortages and surplus', async () => {
+    const skus = ['SHORTAGE', 'SURPLUS'].flatMap(discrepancyType => [false, true].map(isReturn => ({
+      sku: `OPTIONAL-${discrepancyType}-${isReturn}`, systemQty: discrepancyType === 'SHORTAGE' ? 2 : 0,
+      actualQty: 1, differenceQty: discrepancyType === 'SHORTAGE' ? -1 : 1, discrepancyType,
+      ...(isReturn ? { isReturn: true } : {}),
+    })));
+    const response = await mf.dispatchFetch('http://localhost/api/inventory/inspection/save', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hallId: 'H1', locationCode: '109-062-1', referenceImportId: 'v2', status: 'PENDING_REVIEW', skus }),
+    });
+    expect(response.status).toBe(200);
+    const saved = await response.json() as any;
+    const reloaded = await (await mf.dispatchFetch('http://localhost/api/inventory/location?hallId=H1&locationCode=109-062-1')).json() as any;
+    expect(reloaded.data.skus).toHaveLength(4);
+    expect(reloaded.data.skus.filter((item: any) => item.isReturn)).toHaveLength(2);
+    expect(reloaded.data.skus.every((item: any) => item.returnCode === '')).toBe(true);
+    for (const mode of ['all', 'differences']) {
+      const exported = await (await mf.dispatchFetch(`http://localhost/api/inventory/inspection/export?hallId=H1&mode=${mode}`)).json() as any;
+      const rows = exported.rows.filter((row: any) => row.inspectionId === saved.inspectionId);
+      expect(rows).toHaveLength(4);
+      expect(rows.filter((row: any) => row.isReturn)).toHaveLength(2);
+      expect(rows.every((row: any) => row.returnCode === '')).toBe(true);
+    }
+  });
+
 });

@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { ReturnFields } from '../components/ReturnFields';
+import { focusScannerInput, scannerKeyboard } from '../utils/scannerInput';
 import { HallId, LocationAuditData, LocationSkuItem, InspectionPhotoItem } from '../types';
 import {
   fetchLocationAudit,
@@ -86,6 +88,8 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   // Modal: Shortage Input
   const [shortageModalSku, setShortageModalSku] = useState<LocationSkuItem | null>(null);
   const [shortageCountInput, setShortageCountInput] = useState<string>('');
+  const [shortageIsReturn, setShortageIsReturn] = useState(false);
+  const [shortageReturnCode, setShortageReturnCode] = useState('');
 
   // Modal: Surplus Input
   const [showSurplusModal, setShowSurplusModal] = useState(false);
@@ -94,31 +98,39 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   const [surplusBarcodeInput, setSurplusBarcodeInput] = useState('');
   const [surplusQtyInput, setSurplusQtyInput] = useState('1');
   const [surplusNotesInput, setSurplusNotesInput] = useState('');
+  const [surplusIsReturn, setSurplusIsReturn] = useState(false);
+  const [surplusReturnCode, setSurplusReturnCode] = useState('');
   const [surplusPhotoFile, setSurplusPhotoFile] = useState<File | null>(null);
   const [surplusPhotoPreview, setSurplusPhotoPreview] = useState<string | null>(null);
   const [uploadingSurplusPhoto, setUploadingSurplusPhoto] = useState(false);
 
   const scanInputRef = useRef<HTMLInputElement>(null);
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const virtualKeyboard = (navigator as Navigator & {
-    virtualKeyboard?: { hide: () => void; show: () => void };
-  }).virtualKeyboard;
+  const virtualKeyboard = scannerKeyboard();
   const focusScanner = (manual = false) => {
-    const input = scanInputRef.current;
-    if (!input) return;
-    // Older Android browsers cannot suppress a keyboard opened by focus().
-    // Keep existing scanner focus instead of reopening it after an operation.
-    if (androidScanner && !manual && !virtualKeyboard) return;
-    input.focus();
-    if (manual) virtualKeyboard?.show();
-    else if (androidScanner) virtualKeyboard?.hide();
-    else input.select();
+    focusScannerInput(scanInputRef.current, manual);
+    if (!manual && !androidScanner) scanInputRef.current?.select();
   };
   const keepScannerFocus = (event: React.PointerEvent<HTMLButtonElement>) => {
     if (androidScanner && !manualInput) event.preventDefault();
   };
   const fileInputRef = useRef<HTMLInputElement>(null);
   const surplusFileInputRef = useRef<HTMLInputElement>(null);
+  const surplusSkuRef = useRef<HTMLInputElement>(null);
+  const surplusBarcodeRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!shortageModalSku && !showSurplusModal) {
+      setManualInput(false);
+      focusScanner();
+    }
+  }, [shortageModalSku, showSurplusModal]);
+  useEffect(() => {
+    if (showSurplusModal) {
+      setManualInput(false);
+      focusScannerInput(surplusMode === 'SKU' ? surplusSkuRef.current : surplusBarcodeRef.current);
+    }
+  }, [showSurplusModal, surplusMode]);
 
   activeKey.current = locData ? locationKey(locData.hallId, locData.locationCode, locData.referenceImportId) : null;
   const photoBusy = uploads.some((upload) => upload.status === 'uploading');
@@ -163,6 +175,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     setUploads([]);
     setLocationNotes('');
     setIsEmptyConfirmed(false);
+    focusScanner();
   }, [currentHall]);
 
   // Load Location Audit
@@ -240,7 +253,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       event.preventDefault();
       const input = scanInputRef.current;
       if (!input) return;
-      input.focus();
+      focusScannerInput(input);
       input.value = event.key.toUpperCase();
       setInputLoc(input.value);
       input.setSelectionRange(input.value.length, input.value.length);
@@ -267,16 +280,18 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   };
 
   // 1-Tap Normal for single SKU
-  const handleSetSkuNormal = (skuCode: string) => {
+  const handleSetSkuNormal = (skuIndex: number) => {
     setSkuList((prev) =>
-      prev.map((item) => {
-        if (item.sku === skuCode) {
+      prev.map((item, index) => {
+        if (index === skuIndex) {
           return {
             ...item,
             actualQty: item.systemQty,
             differenceQty: 0,
             discrepancyType: 'NORMAL',
             notes: '盘点正常相符',
+            isReturn: false,
+            returnCode: '',
           };
         }
         return item;
@@ -291,6 +306,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     const normalSkus = skuList.map((item) => ({
       ...item, actualQty: item.systemQty, differenceQty: 0,
       discrepancyType: 'NORMAL' as const, notes: '一键确认相符',
+      isReturn: false, returnCode: '',
     }));
     setSkuList(normalSkus);
     setIsEmptyConfirmed(false);
@@ -308,6 +324,8 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   const handleOpenShortage = (item: LocationSkuItem) => {
     setShortageModalSku(item);
     setShortageCountInput('1');
+    setShortageIsReturn(Boolean(item.isReturn));
+    setShortageReturnCode(item.returnCode || '');
   };
 
   // Submit Shortage
@@ -329,13 +347,15 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
     setSkuList((prev) =>
       prev.map((item) => {
-        if (item.sku === shortageModalSku.sku) {
+        if (item === shortageModalSku) {
           return {
             ...item,
             actualQty: actual,
             differenceQty: diff,
             discrepancyType: 'SHORTAGE',
             notes: `现场少货 ${shortageCount} 件`,
+            isReturn: shortageIsReturn,
+            returnCode: shortageIsReturn ? shortageReturnCode.trim() : '',
           };
         }
         return item;
@@ -425,6 +445,8 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
         differenceQty: qty,
         discrepancyType: surplusMode === 'NO_SKU' ? 'NO_SKU_SURPLUS' : 'SURPLUS',
         notes: surplusNotesInput.trim() || `现场多货 ${qty} 件 (${surplusMode})`,
+        isReturn: surplusIsReturn,
+        returnCode: surplusIsReturn ? surplusReturnCode.trim() : '',
       };
 
       setSkuList((prev) => [...prev, newSurplusItem]);
@@ -436,6 +458,8 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       setSurplusBarcodeInput('');
       setSurplusQtyInput('1');
       setSurplusNotesInput('');
+      setSurplusIsReturn(false);
+      setSurplusReturnCode('');
       setSurplusPhotoFile(null);
       setSurplusPhotoPreview(null);
       triggerHaptic(true);
@@ -536,6 +560,8 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
         differenceQty: s.differenceQty ?? 0,
         discrepancyType: s.discrepancyType || 'NORMAL',
         notes: s.notes,
+        isReturn: Boolean(s.isReturn),
+        returnCode: s.isReturn ? s.returnCode || '' : '',
       })),
       photos: photos.map((p) => ({
         photoId: p.photoId,
@@ -625,8 +651,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
               onKeyDown={handleScanKeyDown}
               placeholder="扫库位条码 / 输入库位 (如 109-047-1)"
               className="w-full bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-8 py-2.5 text-base font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 transition"
-              autoFocus={!androidScanner}
-              {...(androidScanner ? { virtualkeyboardpolicy: 'manual' } : {})}
+              {...{ virtualkeyboardpolicy: !manualInput && virtualKeyboard ? 'manual' : 'auto' }}
               autoComplete="off"
               spellCheck={false}
               autoCapitalize="off"
@@ -638,7 +663,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 type="button"
                 onClick={() => {
                   setInputLoc('');
-                  scanInputRef.current?.focus();
+                  focusScanner();
                 }}
                 className="absolute right-2.5 top-3 text-slate-400 hover:text-slate-600"
               >
@@ -652,9 +677,9 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             aria-label={manualInput ? '返回扫码模式' : '手动输入库位'}
             aria-pressed={manualInput}
             onClick={() => {
-              scanInputRef.current?.blur();
               setManualInput(!manualInput);
-              setTimeout(() => focusScanner(!manualInput), 0);
+              if (manualInput) scanInputRef.current?.blur();
+              focusScanner(!manualInput);
             }}
             className="text-slate-600 bg-slate-100 px-2 rounded-lg"
           >
@@ -864,6 +889,12 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                     </div>
                   </div>
 
+                  {item.isReturn && (
+                    <p className="mt-2 text-xs text-slate-600 break-all">
+                      退货{item.returnCode ? ` · 退货码或跟踪号：${item.returnCode}` : ''}
+                    </p>
+                  )}
+
                   {/* Stock Quantities Grid (6 Pillars) */}
                   <div className="grid grid-cols-6 gap-1 mt-2.5 pt-2 border-t border-slate-100 text-center">
                     <div className="bg-slate-50 rounded p-1">
@@ -908,7 +939,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                   <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-slate-100">
                     <button
                       type="button"
-                      onClick={() => handleSetSkuNormal(item.sku)}
+                      onClick={() => handleSetSkuNormal(idx)}
                       className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 active:scale-95 transition"
                     >
                       <Check className="w-3.5 h-3.5" />
@@ -1059,6 +1090,10 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
               </div>
             </div>
 
+            <ReturnFields isReturn={shortageIsReturn} returnCode={shortageReturnCode}
+              onReturnChange={value => { setShortageIsReturn(value); if (!value) setShortageReturnCode(''); }}
+              onCodeChange={setShortageReturnCode} />
+
             <div className="flex gap-2 pt-2">
               <button
                 type="button"
@@ -1136,19 +1171,21 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                   SKU 编码 (扫码或录入)
                 </label>
                 <input
+                  ref={surplusSkuRef}
                   type="text"
-                  inputMode={manualInput ? 'text' : 'none'}
+                  inputMode={manualInput ? 'text' : androidScanner ? undefined : 'none'}
+                  {...{ virtualkeyboardpolicy: !manualInput && virtualKeyboard ? 'manual' : 'auto' }}
                   value={surplusSkuInput}
                   onChange={(e) => setSurplusSkuInput(e.target.value.toUpperCase())}
                   placeholder="扫描或输入外箱 SKU"
                   className="w-full font-mono font-bold text-sm border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  autoFocus
+                  autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
                 />
                 <button type="button" aria-label="手动输入" onClick={(event) => {
                   const input = event.currentTarget.previousElementSibling as HTMLInputElement;
-                  input.blur();
                   setManualInput(!manualInput);
-                  setTimeout(() => input.focus(), 0);
+                  if (manualInput) input.blur();
+                  focusScannerInput(input, !manualInput);
                 }} className="mt-1 text-slate-600"><Keyboard className="w-4 h-4" /></button>
               </div>
             )}
@@ -1160,19 +1197,21 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                   Barcode / eBarcode 条码 (扫码或录入)
                 </label>
                 <input
+                  ref={surplusBarcodeRef}
                   type="text"
-                  inputMode={manualInput ? 'text' : 'none'}
+                  inputMode={manualInput ? 'text' : androidScanner ? undefined : 'none'}
+                  {...{ virtualkeyboardpolicy: !manualInput && virtualKeyboard ? 'manual' : 'auto' }}
                   value={surplusBarcodeInput}
                   onChange={(e) => setSurplusBarcodeInput(e.target.value.trim())}
                   placeholder="扫描外箱 Barcode / eBarcode"
                   className="w-full font-mono font-bold text-sm border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  autoFocus
+                  autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
                 />
                 <button type="button" aria-label="手动输入" onClick={(event) => {
                   const input = event.currentTarget.previousElementSibling as HTMLInputElement;
-                  input.blur();
                   setManualInput(!manualInput);
-                  setTimeout(() => input.focus(), 0);
+                  if (manualInput) input.blur();
+                  focusScannerInput(input, !manualInput);
                 }} className="mt-1 text-slate-600"><Keyboard className="w-4 h-4" /></button>
               </div>
             )}
@@ -1200,6 +1239,10 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             </div>
 
             {/* Field: Photo Upload (Mandatory for NO_SKU) */}
+            <ReturnFields isReturn={surplusIsReturn} returnCode={surplusReturnCode}
+              onReturnChange={value => { setSurplusIsReturn(value); if (!value) setSurplusReturnCode(''); }}
+              onCodeChange={setSurplusReturnCode} disabled={uploadingSurplusPhoto} />
+
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 {surplusMode === 'NO_SKU' ? (

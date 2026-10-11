@@ -46,8 +46,8 @@ describe('Excel inspection results', () => {
     expect(images).toHaveLength(4);
     expect(images[0].range.tl.nativeRow).toBe(1);
     expect(images[1].range.tl.nativeRow).toBe(1);
-    expect(images[0].range.tl.nativeCol).toBe(14);
-    expect(images[1].range.tl.nativeCol).toBe(15);
+    expect(images[0].range.tl.nativeCol).toBe(17);
+    expect(images[1].range.tl.nativeCol).toBe(18);
     expect(loaded).toEqual(['a', 'b']);
     const zip = await JSZip.loadAsync(buffer);
     const media = Object.keys(zip.files).filter((name) => name.startsWith('xl/media/') && !zip.files[name].dir);
@@ -55,6 +55,27 @@ describe('Excel inspection results', () => {
     for (const name of media) {
       expect(await zip.file(name)!.async('base64')).toBe(originalPng);
     }
+  });
+
+  it('marks only completely normal photographed locations and exports return codes as text', async () => {
+    const workbook = await buildInspectionWorkbook([
+      { ...row, inspectionId: 'normal-photo', differenceQty: 0, actualQty: 10, discrepancyType: 'NORMAL' },
+      { ...row, inspectionId: 'mixed', differenceQty: 0, actualQty: 10, discrepancyType: 'NORMAL' },
+      { ...row, inspectionId: 'mixed', discrepancyType: 'SHORTAGE', isReturn: true, returnCode: '000RET001' },
+      { ...row, inspectionId: 'surplus', actualQty: 12, differenceQty: 2, discrepancyType: 'SURPLUS', isReturn: true, returnCode: '0001234567' },
+    ], async () => ({ base64: originalPng, extension: 'png', width: 1, height: 1 }));
+    const restored = new ExcelJS.Workbook();
+    await restored.xlsx.load(await workbook.xlsx.writeBuffer());
+    const sheet = restored.worksheets[0];
+    expect(sheet.getRow(1).getCell(15).value).toBe('照片标记');
+    expect(sheet.getRow(1).getCell(17).value).toBe('退货码或跟踪号（如有）');
+    expect(sheet.getRow(2).getCell(15).value).toBe('正常·有照片');
+    expect(sheet.getRow(3).getCell(15).value).toBe('');
+    expect(sheet.getRow(4).getCell(15).value).toBe('');
+    expect(sheet.getRow(4).getCell(16).value).toBe('是');
+    expect(sheet.getRow(4).getCell(17).value).toBe('000RET001');
+    expect(sheet.getRow(5).getCell(17).value).toBe('0001234567');
+    expect(sheet.getImages()).toHaveLength(8);
   });
 
   it('does not silently omit a failed image download', async () => {

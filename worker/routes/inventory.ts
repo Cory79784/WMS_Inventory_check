@@ -2,6 +2,7 @@ import { Env, AuthUser } from '../types';
 import { authenticateRequest } from '../auth/access';
 import { adjacentLocation } from '../locationNavigation';
 import { exportInspectionResults } from './inspection-export';
+import { decodeInspectionNotes, encodeInspectionNotes } from '../../src/utils/inspectionNotes';
 
 interface StockRowInput {
   sku: string;
@@ -609,8 +610,10 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
       }
 
       // Merge stock rows with saved inspection data (or defaults)
+      const matchedSkuIds = new Set<string>();
       const skus = stockRows.results.map((r) => {
-        const inspMatch = savedSkus.find((s) => s.sku === r.sku);
+        const inspMatch = savedSkus.find((s) => s.sku === r.sku && s.system_qty === r.system_qty);
+        if (inspMatch) matchedSkuIds.add(inspMatch.id);
         return {
           sku: r.sku,
           barcode: r.barcode || '',
@@ -625,26 +628,26 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
           actualQty: inspMatch ? inspMatch.actual_qty : null,
           differenceQty: inspMatch ? inspMatch.difference_qty : null,
           discrepancyType: inspMatch ? inspMatch.discrepancy_type : null,
-          notes: inspMatch?.notes || '',
+          ...decodeInspectionNotes(inspMatch?.notes),
         };
       });
 
-      // Also append surplus SKUs that were not part of book stock
-      const surplusSkus = savedSkus.filter((s) => !stockRows.results.some((r) => r.sku === s.sku)).map((s) => ({
+      // Retain extra saved rows, including returns sharing a book-stock SKU.
+      const surplusSkus = savedSkus.filter((s) => !matchedSkuIds.has(s.id)).map((s) => ({
         sku: s.sku || '',
         barcode: s.barcode || '',
         eBarcode: s.e_barcode || '',
         customerCode: '',
-        nameZh: s.notes || '现场多货',
+        nameZh: decodeInspectionNotes(s.notes).notes || '现场多货',
         nameEn: '',
-        systemQty: 0,
+        systemQty: s.system_qty,
         availableQty: 0,
         allocatedQty: 0,
         frozenQty: 0,
         actualQty: s.actual_qty,
         differenceQty: s.difference_qty,
         discrepancyType: s.discrepancy_type,
-        notes: s.notes || '',
+        ...decodeInspectionNotes(s.notes),
       }));
 
       const allSkus = [...skus, ...surplusSkus];
@@ -713,6 +716,8 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
           differenceQty: number;
           discrepancyType: string;
           notes?: string;
+          isReturn?: boolean;
+          returnCode?: string;
         }>;
         photos?: Array<{
           photoId: string;
@@ -796,7 +801,7 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
             item.actualQty ?? 0,
             item.differenceQty ?? 0,
             item.discrepancyType || 'NORMAL',
-            item.notes || null,
+            encodeInspectionNotes(item.notes, item.isReturn === true, item.returnCode) || null,
             nowUtc
           )
         );
