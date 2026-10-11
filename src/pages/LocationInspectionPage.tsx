@@ -15,13 +15,37 @@ import {
   PlusCircle,
   ChevronLeft,
   ChevronRight,
-  ArrowRight,
   RotateCw,
   X,
   FileQuestion,
   Save,
   Check,
+  Keyboard,
 } from 'lucide-react';
+
+interface PhotoUpload {
+  id: string;
+  file: File;
+  progress: number;
+  status: 'uploading' | 'saved' | 'error';
+}
+interface LocationDraft {
+  data: LocationAuditData;
+  skus: LocationSkuItem[];
+  photos: InspectionPhotoItem[];
+  notes: string;
+  empty: boolean;
+  uploads: PhotoUpload[];
+}
+// Page-session drafts only: no persistence, offline queue or background processing.
+const locationDrafts = new Map<string, LocationDraft>();
+const locationKey = (hall: string, code: string) => `${hall}:${code.toUpperCase()}`;
+const hasDraftChanges = (draft: LocationDraft) =>
+  JSON.stringify(draft.skus) !== JSON.stringify(draft.data.skus) ||
+  JSON.stringify(draft.photos) !== JSON.stringify(draft.data.inspection?.photos || []) ||
+  draft.notes !== (draft.data.inspection?.notes || '') ||
+  draft.empty !== Boolean(draft.data.inspection?.isEmptyConfirmed) ||
+  draft.uploads.some((upload) => upload.status !== 'saved');
 
 interface LocationInspectionPageProps {
   currentHall: HallId;
@@ -36,6 +60,14 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 }) => {
   // Input search state
   const [inputLoc, setInputLoc] = useState('');
+  const [manualInput, setManualInput] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [uploads, setUploads] = useState<PhotoUpload[]>([]);
+  const [surplusProgress, setSurplusProgress] = useState(0);
+  const [surplusUploadFailed, setSurplusUploadFailed] = useState(false);
+  const requestId = useRef(0);
+  const uploadsInFlight = useRef(0);
+  const activeKey = useRef<string | null>(null);
   const [activeVersionInfo, setActiveVersionInfo] = useState<any | null>(null);
 
   // Current location audit state
@@ -73,6 +105,15 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const surplusFileInputRef = useRef<HTMLInputElement>(null);
 
+  activeKey.current = locData ? locationKey(locData.hallId, locData.locationCode) : null;
+  const photoBusy = uploads.some((upload) => upload.status === 'uploading');
+  const photoFailed = uploads.some((upload) => upload.status === 'error');
+  useEffect(() => {
+    if (locData) locationDrafts.set(locationKey(locData.hallId, locData.locationCode), {
+      data: locData, skus: skuList, photos, notes: locationNotes, empty: isEmptyConfirmed, uploads,
+    });
+  }, [locData, skuList, photos, locationNotes, isEmptyConfirmed, uploads]);
+
   // Haptic feedback for PDA
   const triggerHaptic = (success = true) => {
     if (navigator.vibrate) {
@@ -96,24 +137,38 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   };
 
   useEffect(() => {
+    requestId.current++;
     loadActiveVersion();
+    setManualInput(false);
+    setLoading(false);
     setLocData(null);
     setInputLoc('');
     setSkuList([]);
     setPhotos([]);
+    setUploads([]);
+    setLocationNotes('');
+    setIsEmptyConfirmed(false);
   }, [currentHall]);
 
   // Load Location Audit
   const handleQueryLocation = async (targetLoc: string) => {
     const loc = targetLoc.trim();
-    if (!loc) return;
+    if (!loc || loading || saving || photoBusy || uploadsInFlight.current || uploadingSurplusPhoto) return;
+    const id = ++requestId.current;
+    setManualInput(false);
+    if (locData) locationDrafts.set(locationKey(locData.hallId, locData.locationCode), {
+      data: locData, skus: skuList, photos, notes: locationNotes, empty: isEmptyConfirmed, uploads,
+    });
     setLoading(true);
     setErrorMsg(null);
     setSaveSuccessMsg(null);
     setLocSuggestions([]);
 
     try {
-      const data = await fetchLocationAudit(currentHall, loc);
+      const cachedDraft = locationDrafts.get(locationKey(currentHall, loc));
+      const draft = cachedDraft && hasDraftChanges(cachedDraft) ? cachedDraft : undefined;
+      const data = draft?.data || await fetchLocationAudit(currentHall, loc);
+      if (id !== requestId.current) return;
       setLocData(data);
       setInputLoc(data.locationCode);
 
@@ -125,20 +180,26 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
         discrepancyType: s.discrepancyType || null,
       }));
 
-      setSkuList(initializedSkus);
-      setPhotos(data.inspection?.photos || []);
-      setLocationNotes(data.inspection?.notes || '');
-      setIsEmptyConfirmed(Boolean(data.inspection?.isEmptyConfirmed));
+      setSkuList(draft?.skus || initializedSkus);
+      setPhotos(draft?.photos || data.inspection?.photos || []);
+      setUploads(draft?.uploads || []);
+      setLocationNotes(draft?.notes ?? data.inspection?.notes ?? '');
+      setIsEmptyConfirmed(draft?.empty ?? Boolean(data.inspection?.isEmptyConfirmed));
 
       triggerHaptic(true);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      if (id !== requestId.current) return;
       setErrorMsg(msg);
       triggerHaptic(false);
     } finally {
+      if (id !== requestId.current) return;
       setLoading(false);
       // Re-focus scanner input
-      setTimeout(() => scanInputRef.current?.focus(), 100);
+      setTimeout(() => {
+        scanInputRef.current?.focus();
+        scanInputRef.current?.select();
+      }, 100);
     }
   };
 
@@ -283,6 +344,8 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     }
 
     setUploadingSurplusPhoto(true);
+    setSurplusProgress(0);
+    setSurplusUploadFailed(false);
 
     try {
       let uploadedPhotoInfo: any = null;
@@ -290,9 +353,13 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
         uploadedPhotoInfo = await uploadInspectionPhoto(
           surplusPhotoFile,
           currentHall,
-          locData.locationCode
+          locData.locationCode,
+          setSurplusProgress
         );
         if (uploadedPhotoInfo?.photoId) {
+          setUploads((prev) => [...prev, {
+            id: uploadedPhotoInfo.photoId, file: surplusPhotoFile, progress: 100, status: 'saved',
+          }]);
           setPhotos((prev) => [
             ...prev,
             {
@@ -335,6 +402,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       triggerHaptic(true);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      setSurplusUploadFailed(true);
       alert(`添加多货失败: ${msg}`);
       triggerHaptic(false);
     } finally {
@@ -342,32 +410,72 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     }
   };
 
-  // General Location Photo Upload
-  const handleLocationPhotoUpload = async (file: File) => {
+  // Keep original Files unchanged; at most two uploads run concurrently.
+  const uploadPhoto = async (task: PhotoUpload) => {
     if (!locData) return;
-    try {
-      const res = await uploadInspectionPhoto(file, currentHall, locData.locationCode);
-      if (res?.photoId) {
-        setPhotos((prev) => [
-          ...prev,
-          {
-            photoId: res.photoId,
-            objectKey: res.objectKey,
-            previewUrl: res.previewUrl,
-          },
-        ]);
-        triggerHaptic(true);
+    setErrorMsg(null);
+    const key = locationKey(locData.hallId, locData.locationCode);
+    uploadsInFlight.current++;
+    const update = (patch: Partial<PhotoUpload>, photo?: InspectionPhotoItem) => {
+      const draft = locationDrafts.get(key);
+      if (draft) {
+        draft.uploads = draft.uploads.map((item) => item.id === task.id ? { ...item, ...patch } : item);
+        if (photo) draft.photos = [...draft.photos, photo];
       }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      alert(`照片上传失败: ${msg}`);
+      if (activeKey.current === key) {
+        setUploads((prev) => prev.map((item) => item.id === task.id ? { ...item, ...patch } : item));
+        if (photo) setPhotos((prev) => [...prev, photo]);
+      }
+    };
+    update({ status: 'uploading', progress: 0 });
+    try {
+      const result = await uploadInspectionPhoto(task.file, locData.hallId, locData.locationCode,
+        (progress) => update({ progress }));
+      update({ status: 'saved', progress: 100 }, {
+        photoId: result.photoId, objectKey: result.objectKey, previewUrl: result.previewUrl,
+      });
+      triggerHaptic(true);
+    } catch (error) {
+      update({ status: 'error' });
+      if (activeKey.current === key) setErrorMsg(error instanceof Error ? error.message : String(error));
       triggerHaptic(false);
+    } finally {
+      uploadsInFlight.current--;
+    }
+  };
+
+  const handleLocationPhotoUpload = async (files: File[]) => {
+    if (!locData || uploadsInFlight.current) return;
+    const tasks: PhotoUpload[] = files.map((file) => ({
+      id: crypto.randomUUID(), file, progress: 0, status: 'uploading',
+    }));
+    const key = locationKey(locData.hallId, locData.locationCode);
+    locationDrafts.set(key, {
+      data: locData, skus: skuList, photos, notes: locationNotes,
+      empty: isEmptyConfirmed, uploads: [...uploads, ...tasks],
+    });
+    setUploads((prev) => [...prev, ...tasks]);
+    for (let index = 0; index < tasks.length; index += 2) {
+      await Promise.all(tasks.slice(index, index + 2).map(uploadPhoto));
+    }
+  };
+
+  const handleExport = async (mode: 'all' | 'differences') => {
+    setExporting(true);
+    setErrorMsg(null);
+    try {
+      const { downloadInspectionResults } = await import('../services/inspectionExport');
+      await downloadInspectionResults(currentHall, mode);
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : String(error));
+    } finally {
+      setExporting(false);
     }
   };
 
   // Save current location inspection to Cloudflare D1
-  const handleSaveInspection = async (andNext = false) => {
-    if (!locData) return;
+  const handleSaveInspection = async () => {
+    if (!locData || saving || photoBusy || photoFailed || uploadingSurplusPhoto) return;
 
     // Check if all SKUs have been verified
     const unverifiedCount = skuList.filter((s) => s.actualQty === null || s.actualQty === undefined).length;
@@ -381,7 +489,8 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     setErrorMsg(null);
 
     const hasAnyDiscrepancy = skuList.some((s) => s.discrepancyType && s.discrepancyType !== 'NORMAL');
-    const finalStatus = hasAnyDiscrepancy ? 'PENDING_REVIEW' : 'VERIFIED';
+    const incomplete = unverifiedCount > 0 || (skuList.length === 0 && !isEmptyConfirmed);
+    const finalStatus = incomplete ? 'IN_PROGRESS' : hasAnyDiscrepancy ? 'PENDING_REVIEW' : 'VERIFIED';
 
     const payload = {
       hallId: currentHall,
@@ -389,7 +498,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       isEmptyConfirmed,
       status: finalStatus,
       notes: locationNotes,
-      skus: skuList.map((s) => ({
+      skus: skuList.filter((s) => s.actualQty !== null && s.actualQty !== undefined).map((s) => ({
         sku: s.sku,
         barcode: s.barcode,
         eBarcode: s.eBarcode,
@@ -408,13 +517,21 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     };
 
     try {
-      await saveLocationInspection(payload);
-      setSaveSuccessMsg(`库位 ${locData.locationCode} 核查保存成功！`);
+      const saved = await saveLocationInspection(payload);
+      const savedData: LocationAuditData = { ...locData, skus: skuList, inspection: {
+        inspectionId: saved.inspectionId, status: finalStatus, isEmptyConfirmed,
+        notes: locationNotes, completedAt: incomplete ? null : saved.savedAt, photos,
+      } };
+      const key = locationKey(locData.hallId, locData.locationCode);
+      locationDrafts.set(key, { data: savedData, skus: skuList, photos,
+        notes: locationNotes, empty: isEmptyConfirmed, uploads: [],
+      });
+      if (activeKey.current !== key) return;
+      setLocData(savedData);
+      setUploads([]);
+      setSaveSuccessMsg(`库位 ${locData.locationCode} ${incomplete ? '暂存' : '核查保存'}成功！`);
       triggerHaptic(true);
 
-      if (andNext && locData.navigation.nextLocationCode) {
-        handleQueryLocation(locData.navigation.nextLocationCode);
-      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setErrorMsg(`保存失败: ${msg}`);
@@ -470,6 +587,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             <input
               ref={scanInputRef}
               type="text"
+              inputMode={manualInput ? 'text' : 'none'}
               value={inputLoc}
               onChange={(e) => setInputLoc(e.target.value.toUpperCase())}
               onKeyDown={handleScanKeyDown}
@@ -496,8 +614,21 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
           <button
             type="button"
+            aria-label={manualInput ? '关闭软键盘' : '手动输入库位'}
+            aria-pressed={manualInput}
+            onClick={() => {
+              scanInputRef.current?.blur();
+              setManualInput(!manualInput);
+              setTimeout(() => scanInputRef.current?.focus(), 0);
+            }}
+            className="text-slate-600 bg-slate-100 px-2 rounded-lg"
+          >
+            <Keyboard className="w-5 h-5" />
+          </button>
+          <button
+            type="button"
             onClick={() => handleQueryLocation(inputLoc)}
-            disabled={loading || !inputLoc.trim()}
+            disabled={loading || saving || photoBusy || !inputLoc.trim()}
             className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold px-4 py-2.5 rounded-lg flex items-center gap-1 shadow-sm transition active:scale-95"
           >
             {loading ? <RotateCw className="w-4 h-4 animate-spin" /> : '查询'}
@@ -521,34 +652,38 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
           </div>
         )}
 
-        {/* Sequential Navigation & Location count */}
+        {/* Adjacent middle-segment codes; actual row ends are entered manually. */}
         {locData?.navigation && (
-          <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 text-xs text-slate-500">
+          <div className="flex items-center justify-between gap-1 mt-2 pt-2 border-t border-slate-100 text-xs text-slate-500">
             <button
               type="button"
-              disabled={!locData.navigation.prevLocationCode}
+              aria-label="上一库位"
+              disabled={loading || saving || photoBusy || !locData.navigation.prevLocationCode}
               onClick={() => locData.navigation.prevLocationCode && handleQueryLocation(locData.navigation.prevLocationCode)}
-              className="flex items-center gap-0.5 px-2 py-1 rounded bg-slate-100 text-slate-700 disabled:opacity-30 disabled:pointer-events-none active:bg-slate-200"
+              className="flex flex-col sm:flex-row items-center gap-1 p-2 rounded bg-slate-100 text-slate-700 disabled:opacity-30 active:bg-slate-200"
             >
-              <ChevronLeft className="w-3.5 h-3.5" />
-              <span>上一个库位</span>
+              <ChevronLeft className="w-8 h-8 shrink-0" />
+              <span className="font-mono">{locData.navigation.prevLocationCode || '—'}</span>
             </button>
-
-            <span className="font-mono text-slate-600">
-              第 <strong className="text-blue-600">{locData.navigation.currentIndex}</strong> / {locData.navigation.totalLocations} 个库位
-            </span>
-
+            <strong className="font-mono text-blue-600 text-base">{locData.locationCode}</strong>
             <button
               type="button"
-              disabled={!locData.navigation.nextLocationCode}
+              aria-label="下一库位"
+              disabled={loading || saving || photoBusy || !locData.navigation.nextLocationCode}
               onClick={() => locData.navigation.nextLocationCode && handleQueryLocation(locData.navigation.nextLocationCode)}
-              className="flex items-center gap-0.5 px-2 py-1 rounded bg-slate-100 text-slate-700 disabled:opacity-30 disabled:pointer-events-none active:bg-slate-200"
+              className="flex flex-col-reverse sm:flex-row items-center gap-1 p-2 rounded bg-slate-100 text-slate-700 disabled:opacity-30 active:bg-slate-200"
             >
-              <span>下一个库位</span>
-              <ChevronRight className="w-3.5 h-3.5" />
+              <span className="font-mono">{locData.navigation.nextLocationCode || '—'}</span>
+              <ChevronRight className="w-8 h-8 shrink-0" />
             </button>
           </div>
         )}
+      </div>
+
+      <div className="flex gap-2 text-xs">
+        <button type="button" disabled={exporting || saving} onClick={() => handleExport('differences')} className="bg-white border border-slate-200 text-slate-700 px-3 py-2 rounded-lg disabled:opacity-50">仅导出差异</button>
+        <button type="button" disabled={exporting || saving} onClick={() => handleExport('all')} className="bg-white border border-slate-200 text-slate-700 px-3 py-2 rounded-lg disabled:opacity-50">导出全部核查结果</button>
+        {exporting && <span className="text-slate-500 self-center">导出中…</span>}
       </div>
 
       {/* Messages */}
@@ -626,7 +761,8 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
               </span>
               <button
                 type="button"
-                onClick={() => setShowSurplusModal(true)}
+                disabled={photoBusy || saving || loading}
+                onClick={() => { setManualInput(false); setSurplusUploadFailed(false); setShowSurplusModal(true); }}
                 className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 border border-blue-200 active:scale-95 transition"
               >
                 <PlusCircle className="w-3.5 h-3.5" />
@@ -776,6 +912,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
               <button
                 type="button"
+                disabled={photoBusy || saving}
                 onClick={() => fileInputRef.current?.click()}
                 className="text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 px-2.5 py-1 rounded font-medium flex items-center gap-1"
               >
@@ -784,17 +921,29 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
               <input
                 ref={fileInputRef}
                 type="file"
+                multiple
                 accept="image/*"
                 capture="environment"
                 className="hidden"
                 onChange={(e) => {
-                  if (e.target.files?.[0]) {
-                    handleLocationPhotoUpload(e.target.files[0]);
-                  }
+                  if (e.target.files?.length) handleLocationPhotoUpload(Array.from(e.target.files));
+                  e.target.value = '';
                 }}
               />
             </div>
 
+            {uploads.map((upload) => (
+              <div key={upload.id} className="text-xs text-slate-600 space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate">{upload.file.name}</span>
+                  {upload.status === 'error' ? (
+                    <button type="button" disabled={photoBusy || saving} onClick={() => uploadPhoto(upload)} className="text-blue-600 shrink-0">重试</button>
+                  ) : <span className="shrink-0">{upload.status === 'saved' ? '已保存' : `上传中 ${upload.progress}%${upload.progress === 100 ? '（等待保存）' : ''}`}</span>}
+                </div>
+                {upload.status === 'uploading' && <progress aria-label="照片上传进度" max={100} value={upload.progress} className="w-full h-2" />}
+              </div>
+            ))}
+            {photoFailed && <p className="text-xs text-red-600">请重试失败照片后再保存本库位核查。</p>}
             {photos.length > 0 && (
               <div className="flex items-center gap-2 overflow-x-auto py-1">
                 {photos.map((p) => (
@@ -818,23 +967,15 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
           <div className="max-w-2xl mx-auto flex items-center gap-2">
             <button
               type="button"
-              onClick={() => handleSaveInspection(false)}
-              disabled={saving}
+              onClick={() => handleSaveInspection()}
+              disabled={saving || loading || photoBusy || photoFailed || uploadingSurplusPhoto}
               className="flex-1 bg-slate-800 hover:bg-slate-900 text-white font-semibold py-3 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition text-sm disabled:opacity-50"
             >
               {saving ? <RotateCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              仅保存本库位
+              保存本库位核查
             </button>
 
-            <button
-              type="button"
-              onClick={() => handleSaveInspection(true)}
-              disabled={saving}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition text-sm disabled:opacity-50"
-            >
-              {saving ? <RotateCw className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-              保存并下一个库位
-            </button>
+
           </div>
         </div>
       )}
@@ -913,6 +1054,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
               </h3>
               <button
                 type="button"
+                disabled={uploadingSurplusPhoto}
                 onClick={() => setShowSurplusModal(false)}
                 className="text-slate-400 hover:text-slate-600"
               >
@@ -959,12 +1101,19 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 </label>
                 <input
                   type="text"
+                  inputMode={manualInput ? 'text' : 'none'}
                   value={surplusSkuInput}
                   onChange={(e) => setSurplusSkuInput(e.target.value.toUpperCase())}
                   placeholder="扫描或输入外箱 SKU"
                   className="w-full font-mono font-bold text-sm border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   autoFocus
                 />
+                <button type="button" aria-label="手动输入" onClick={(event) => {
+                  const input = event.currentTarget.previousElementSibling as HTMLInputElement;
+                  input.blur();
+                  setManualInput(!manualInput);
+                  setTimeout(() => input.focus(), 0);
+                }} className="mt-1 text-slate-600"><Keyboard className="w-4 h-4" /></button>
               </div>
             )}
 
@@ -976,12 +1125,19 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 </label>
                 <input
                   type="text"
+                  inputMode={manualInput ? 'text' : 'none'}
                   value={surplusBarcodeInput}
                   onChange={(e) => setSurplusBarcodeInput(e.target.value.trim())}
                   placeholder="扫描外箱 Barcode / eBarcode"
                   className="w-full font-mono font-bold text-sm border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   autoFocus
                 />
+                <button type="button" aria-label="手动输入" onClick={(event) => {
+                  const input = event.currentTarget.previousElementSibling as HTMLInputElement;
+                  input.blur();
+                  setManualInput(!manualInput);
+                  setTimeout(() => input.focus(), 0);
+                }} className="mt-1 text-slate-600"><Keyboard className="w-4 h-4" /></button>
               </div>
             )}
 
@@ -1061,9 +1217,11 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
               />
             </div>
 
+            {uploadingSurplusPhoto && surplusPhotoFile && <progress aria-label="多货照片上传进度" max={100} value={surplusProgress} className="w-full h-2" />}
             <div className="flex gap-2 pt-2">
               <button
                 type="button"
+                disabled={uploadingSurplusPhoto}
                 onClick={() => setShowSurplusModal(false)}
                 className="flex-1 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-medium"
               >
@@ -1075,7 +1233,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 onClick={handleSubmitSurplus}
                 className="flex-1 py-2 rounded-lg bg-amber-600 text-white text-xs font-bold shadow-md hover:bg-amber-700 disabled:opacity-50"
               >
-                {uploadingSurplusPhoto ? '上传并添加...' : '确认添加多货'}
+                {uploadingSurplusPhoto ? `上传中 ${surplusProgress}%` : surplusUploadFailed ? '重试' : '确认添加多货'}
               </button>
             </div>
           </div>

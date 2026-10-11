@@ -1,5 +1,7 @@
 import { Env, AuthUser } from '../types';
 import { authenticateRequest } from '../auth/access';
+import { adjacentLocation } from '../locationNavigation';
+import { exportInspectionResults } from './inspection-export';
 
 interface StockRowInput {
   sku: string;
@@ -32,6 +34,10 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
     return Response.json({ success: false, error: auth.error || 'Unauthorized' }, { status: 401 });
   }
   const user = auth.user;
+
+  if (path === '/api/inventory/inspection/export' && request.method === 'GET') {
+    return exportInspectionResults(request, env);
+  }
 
   // 1. GET /api/inventory/imports?hallId=H1
   if (path === '/api/inventory/imports' && request.method === 'GET') {
@@ -643,18 +649,8 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
 
       const allSkus = [...skus, ...surplusSkus];
 
-      // Sequential navigation: find prev and next location codes in this snapshot
-      const allLocs = await env.DB.prepare(`
-        SELECT DISTINCT location_code
-        FROM inventory_stock_rows
-        WHERE hall_id = ? AND import_id = ?
-        ORDER BY location_code ASC
-      `).bind(hallId, importId).all<{ location_code: string }>();
-
-      const locList = allLocs.results.map((l) => l.location_code);
-      const currentIndex = locList.findIndex((l) => l.toUpperCase() === locationCode.toUpperCase());
-      const prevLocationCode = currentIndex > 0 ? locList[currentIndex - 1] : null;
-      const nextLocationCode = currentIndex >= 0 && currentIndex < locList.length - 1 ? locList[currentIndex + 1] : null;
+      const prevLocationCode = adjacentLocation(locationCode, -1);
+      const nextLocationCode = adjacentLocation(locationCode, 1);
 
       return Response.json({
         success: true,
@@ -672,11 +668,11 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
             isEmptyConfirmed: Boolean(inspection.is_empty_confirmed),
             notes: inspection.notes || '',
             completedAt: inspection.completed_at,
-            photos: savedPhotos,
+            photos: savedPhotos.map((p) => ({ photoId: p.photo_id, objectKey: p.object_key })),
           } : null,
           navigation: {
-            currentIndex: currentIndex >= 0 ? currentIndex + 1 : null,
-            totalLocations: locList.length,
+            currentIndex: null,
+            totalLocations: 0,
             prevLocationCode,
             nextLocationCode,
           },
@@ -759,7 +755,7 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
           user.email,
           body.isEmptyConfirmed ? 1 : 0,
           body.notes || null,
-          nowUtc
+          status === 'IN_PROGRESS' ? null : nowUtc
         ),
 
         // 2. Clear previous sku_inspections for clean replace
@@ -847,25 +843,44 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
     }
 
     try {
-      const formData = await request.formData();
-      const file = formData.get('photo');
-      const hallId = String(formData.get('hallId') || 'H1');
-      const locationCode = String(formData.get('locationCode') || 'general');
-
-      if (!file || typeof file === 'string' || typeof (file as Blob).arrayBuffer !== 'function') {
-        return Response.json({ success: false, error: 'Valid image file required' }, { status: 400 });
+      const contentType = request.headers.get('Content-Type') || 'application/octet-stream';
+      let body: ArrayBuffer | ReadableStream;
+      let hallId: string;
+      let locationCode: string;
+      let filename: string;
+      let mimeType: string;
+      if (contentType.includes('multipart/form-data')) {
+        // Keep existing multipart callers compatible.
+        const formData = await request.formData();
+        const file = formData.get('photo');
+        if (!file || typeof file === 'string') {
+          return Response.json({ success: false, error: 'Valid image file required' }, { status: 400 });
+        }
+        const fileObj = file as unknown as File;
+        body = await fileObj.arrayBuffer();
+        hallId = String(formData.get('hallId') || 'H1');
+        locationCode = String(formData.get('locationCode') || 'general');
+        filename = fileObj.name;
+        mimeType = fileObj.type || 'application/octet-stream';
+      } else {
+        if (!request.body || request.headers.get('Content-Length') === '0') {
+          return Response.json({ success: false, error: 'Valid image file required' }, { status: 400 });
+        }
+        // R2 needs a known-length stream. Preserve compatibility with chunked callers.
+        body = request.headers.has('Content-Length') ? request.body : await request.arrayBuffer();
+        hallId = url.searchParams.get('hallId') || 'H1';
+        locationCode = url.searchParams.get('locationCode') || 'general';
+        filename = url.searchParams.get('filename') || '';
+        mimeType = contentType;
       }
-
-      const fileObj = file as unknown as File;
-      const buffer = await fileObj.arrayBuffer();
-      const mimeType = fileObj.type || 'image/jpeg';
       const timestamp = Date.now();
       const rand = Math.random().toString(36).substring(2, 7);
       const sanitizedLoc = locationCode.replace(/[^a-zA-Z0-9_-]/g, '_');
       const photoId = `p_${timestamp}_${rand}`;
-      const objectKey = `inspections/${hallId}/${sanitizedLoc}/${photoId}.jpg`;
+      const extension = /\.([a-zA-Z0-9]{1,8})$/.exec(filename)?.[1] || 'bin';
+      const objectKey = `inspections/${hallId}/${sanitizedLoc}/${photoId}.${extension}`;
 
-      await env.PHOTO_BUCKET.put(objectKey, buffer, {
+      await env.PHOTO_BUCKET.put(objectKey, body, {
         httpMetadata: { contentType: mimeType },
         customMetadata: {
           uploadedBy: user.email,

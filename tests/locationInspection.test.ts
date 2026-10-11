@@ -1,6 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { handleInventoryRoutes } from '../worker/routes/inventory';
 import { Env } from '../worker/types';
+import { adjacentLocation } from '../worker/locationNavigation';
+
+describe('Adjacent location codes', () => {
+  it('includes empty middle-segment locations without changing row or layer', () => {
+    expect(adjacentLocation('109-028-1', -1)).toBe('109-027-1');
+    expect(adjacentLocation('109-028-1', 1)).toBe('109-029-1');
+    expect(adjacentLocation('109-999-2', 1)).toBeNull();
+    expect(adjacentLocation('109-001-2', -1)).toBeNull();
+    expect(adjacentLocation('UNKNOWN', 1)).toBeNull();
+  });
+});
 
 describe('Location Inspection & Multi-SKU Aggregation API', () => {
   it('aggregates multiple SKUs for a scanned location', async () => {
@@ -82,6 +93,8 @@ describe('Location Inspection & Multi-SKU Aggregation API', () => {
     expect(json.data.skus[0].allocatedQty).toBe(2);
     expect(json.data.skus[1].sku).toBe('SKU-002');
     expect(json.data.skus[1].systemQty).toBe(5);
+    expect(json.data.navigation.prevLocationCode).toBe('109-046-1');
+    expect(json.data.navigation.nextLocationCode).toBe('109-048-1');
   });
 
   it('saves inspection with shortage and surplus records', async () => {

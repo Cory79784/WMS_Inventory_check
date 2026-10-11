@@ -76,6 +76,21 @@ export interface InspectionPhotoItem {
   previewUrl?: string;
 }
 
+export interface InspectionExportRow {
+  inspectionId: string;
+  hallId: string;
+  locationCode: string;
+  sku: string;
+  systemQty: number;
+  actualQty: number;
+  differenceQty: number;
+  completedAt: string;
+  versionNumber: number;
+  referenceImportId: string;
+  notes: string;
+  photoKeys: string[];
+}
+
 export interface LocationAuditData {
   hallId: HallId;
   locationCode: string;

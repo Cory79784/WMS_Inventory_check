@@ -114,19 +114,31 @@ export async function saveLocationInspection(payload: any): Promise<any> {
   return res.json();
 }
 
-export async function uploadInspectionPhoto(file: File, hallId: string, locationCode: string): Promise<any> {
-  const formData = new FormData();
-  formData.append('photo', file);
-  formData.append('hallId', hallId);
-  formData.append('locationCode', locationCode);
-
-  const res = await fetch('/api/inventory/inspection/photo', {
-    method: 'POST',
-    body: formData,
+export async function uploadInspectionPhoto(
+  file: File, hallId: string, locationCode: string, onProgress?: (percent: number) => void
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const query = new URLSearchParams({ hallId, locationCode, filename: file.name });
+    xhr.open('POST', `/api/inventory/inspection/photo?${query}`);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress?.(Math.round(event.loaded / event.total * 100));
+    };
+    xhr.onload = () => {
+      try {
+        const result = JSON.parse(xhr.responseText);
+        if (xhr.status < 200 || xhr.status >= 300 || !result.success) {
+          reject(new Error(result.error || `Photo upload failed: HTTP ${xhr.status}`));
+        } else {
+          resolve(result);
+        }
+      } catch {
+        reject(new Error('照片上传响应无效'));
+      }
+    };
+    xhr.onerror = () => reject(new Error('照片上传网络失败，请重试'));
+    xhr.onabort = () => reject(new Error('照片上传已取消'));
+    xhr.send(file);
   });
-  if (!res.ok) {
-    const errorJson = await res.json().catch(() => ({}));
-    throw new Error(errorJson.error || `Photo upload failed: HTTP ${res.status}`);
-  }
-  return res.json();
 }
