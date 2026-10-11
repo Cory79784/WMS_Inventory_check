@@ -12,7 +12,8 @@ export async function exportInspectionResults(request: Request, env: Env): Promi
     // Read saved actual counts and the saved reference version, never current WMS stock.
     const result = await env.DB.prepare(`
       SELECT l.inspection_id as inspectionId, l.hall_id as hallId,
-        l.location_code as locationCode, COALESCE(s.sku, '空库位') as sku,
+        l.location_code as locationCode, COALESCE(s.sku, '') as sku,
+        COALESCE(NULLIF(s.barcode, ''), s.e_barcode, '') as barcode,
         COALESCE(s.system_qty, 0) as systemQty, COALESCE(s.actual_qty, 0) as actualQty,
         COALESCE(s.difference_qty, 0) as differenceQty, l.completed_at as completedAt,
         i.version_number as versionNumber, l.reference_import_id as referenceImportId,
@@ -41,6 +42,9 @@ export async function exportInspectionResults(request: Request, env: Env): Promi
     }
     const rows: InspectionExportRow[] = result.results.map(({ locationNotes, skuNotes, ...row }) => ({
       ...row,
+      // Older barcode-only/unknown records used these UI labels as their SKU.
+      sku: row.sku === '空库位' || row.sku === '无SKU未知品' || row.sku.startsWith('条码:')
+        ? (row.barcode ? '' : '无sku') : row.sku || (row.barcode ? '' : '无sku'),
       notes: [locationNotes, skuNotes].filter(Boolean).join('；'),
       photoKeys: photoKeys.get(row.inspectionId) || [],
     }));

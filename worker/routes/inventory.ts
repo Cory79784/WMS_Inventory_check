@@ -649,6 +649,14 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
 
       const allSkus = [...skus, ...surplusSkus];
 
+      const lastInspection = await env.DB.prepare(`
+        SELECT l.completed_at as completedAt, i.version_number as versionNumber
+        FROM location_inspections l JOIN inventory_imports i ON i.import_id = l.reference_import_id
+        WHERE l.hall_id = ? AND UPPER(l.location_code) = UPPER(?)
+          AND l.completed_at IS NOT NULL AND l.status IN ('VERIFIED', 'PENDING_REVIEW', 'CLOSED')
+        ORDER BY datetime(l.completed_at) DESC LIMIT 1
+      `).bind(hallId, locationCode).first<{ completedAt: string; versionNumber: number }>();
+
       const prevLocationCode = adjacentLocation(locationCode, -1);
       const nextLocationCode = adjacentLocation(locationCode, 1);
 
@@ -661,6 +669,7 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
           versionNumber: impMeta?.version_number ?? 1,
           sourceExportedAt: impMeta?.source_exported_at ?? null,
           hasBookStock: stockRows.results.length > 0,
+          lastInspection,
           skus: allSkus,
           inspection: inspection ? {
             inspectionId: inspection.inspection_id,
@@ -689,6 +698,7 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
     try {
       const body = await request.json() as {
         hallId: string;
+        referenceImportId?: string;
         locationCode: string;
         isEmptyConfirmed?: boolean;
         status?: 'VERIFIED' | 'IN_PROGRESS' | 'PENDING_REVIEW' | 'CLOSED';
@@ -724,6 +734,10 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
 
       const importId = activePointer.active_import_id;
       const nowUtc = new Date().toISOString();
+
+      if (body.referenceImportId && body.referenceImportId !== importId) {
+        return Response.json({ success: false, error: 'WMS 版本已更新，请重新查询库位后核查，旧版本结果不会覆盖到新版本。' }, { status: 409 });
+      }
 
       // Check existing inspection or generate ID
       const existing = await env.DB.prepare(

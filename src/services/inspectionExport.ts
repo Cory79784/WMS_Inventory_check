@@ -18,6 +18,7 @@ export async function buildInspectionWorkbook(
     { header: '库厅', key: 'hallId', width: 8 },
     { header: '库位', key: 'locationCode', width: 16 },
     { header: 'SKU', key: 'sku', width: 24 },
+    { header: 'Barcode', key: 'barcode', width: 24 },
     { header: '账面数量', key: 'systemQty', width: 12 },
     { header: '实盘数量', key: 'actualQty', width: 12 },
     { header: '差异', key: 'differenceQty', width: 12 },
@@ -27,11 +28,24 @@ export async function buildInspectionWorkbook(
     ...Array.from({ length: photoCount }, (_, index) => ({ header: `照片 ${index + 1}`, width: 24 })),
   ];
   sheet.getRow(1).font = { bold: true };
+  sheet.views = [{ state: 'frozen', ySplit: 1 }];
+  sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 10 + photoCount } };
+  sheet.getRow(1).height = 24;
+  sheet.getRow(1).eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+  });
   const images = new Map<string, Promise<{ id: number; width: number; height: number }>>();
   for (const result of rows) {
     const row = sheet.addRow({ ...result, version: `V${result.versionNumber} (${result.referenceImportId})` });
     row.alignment = { vertical: 'middle', wrapText: true };
-    if (result.photoKeys.length) row.height = 90;
+    row.height = result.photoKeys.length ? 90 : 30;
+    row.eachCell({ includeEmpty: true }, (cell) => {
+      cell.border = { bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
+      if (row.number % 2 === 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+    });
+    if (result.differenceQty !== 0) row.getCell('differenceQty').font = { bold: true, color: { argb: 'FFDC2626' } };
     for (let index = 0; index < result.photoKeys.length; index++) {
       const key = result.photoKeys[index];
       if (!images.has(key)) {
@@ -44,7 +58,7 @@ export async function buildInspectionWorkbook(
       const scale = Math.min(160 / image.width, 110 / image.height);
       // Only the display dimensions change; the original image bytes are embedded unchanged.
       sheet.addImage(image.id, {
-        tl: { col: 9 + index + 0.05, row: row.number - 1 + 0.05 },
+        tl: { col: 10 + index + 0.05, row: row.number - 1 + 0.05 },
         ext: { width: image.width * scale, height: image.height * scale },
         editAs: 'oneCell',
       });

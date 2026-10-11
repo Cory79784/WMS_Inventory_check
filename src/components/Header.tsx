@@ -1,12 +1,12 @@
 import React from 'react';
 import { HallId } from '../types';
-import { Warehouse, ClipboardCheck, UploadCloud, Cpu } from 'lucide-react';
+import { Warehouse, ClipboardCheck, UploadCloud, Cpu, Download } from 'lucide-react';
 
 interface HeaderProps {
   currentHall: HallId;
   onSelectHall: (hall: HallId) => void;
-  activeView: 'inspect' | 'test' | 'import' | 'arch';
-  onSelectView: (view: 'inspect' | 'test' | 'import' | 'arch') => void;
+  activeView: 'inspect' | 'test' | 'import' | 'export' | 'arch';
+  onSelectView: (view: 'inspect' | 'test' | 'import' | 'export' | 'arch') => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -46,7 +46,7 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Operation Tabs Bar */}
       <div className="bg-slate-800/95 border-t border-slate-700/60 px-3 py-1 flex items-center justify-between text-xs max-w-3xl mx-auto">
-        <div className="flex gap-1">
+        <div className="flex gap-1 overflow-x-auto whitespace-nowrap">
           <button
             type="button"
             onClick={() => onSelectView('inspect')}
@@ -57,7 +57,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <ClipboardCheck className="w-3.5 h-3.5" />
-            库位核查 (现场操作)
+            库位核查
           </button>
           <button
             type="button"
@@ -70,6 +70,18 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <UploadCloud className="w-3.5 h-3.5" />
             WMS 导入
+          </button>
+          <button
+            type="button"
+            onClick={() => onSelectView('export')}
+            className={`px-2.5 py-1.5 rounded-md font-medium flex items-center gap-1 transition ${
+              activeView === 'export'
+                ? 'bg-slate-700 text-white font-semibold'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Download className="w-3.5 h-3.5" />
+            导出
           </button>
           <button
             type="button"

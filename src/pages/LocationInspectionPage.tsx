@@ -5,7 +5,6 @@ import {
   saveLocationInspection,
   uploadInspectionPhoto,
   fetchActiveVersion,
-  fetchLocationsList,
 } from '../services/api';
 import {
   Scan,
@@ -39,7 +38,7 @@ interface LocationDraft {
 }
 // Page-session drafts only: no persistence, offline queue or background processing.
 const locationDrafts = new Map<string, LocationDraft>();
-const locationKey = (hall: string, code: string) => `${hall}:${code.toUpperCase()}`;
+const locationKey = (hall: string, code: string, version: string) => `${hall}:${code.toUpperCase()}:${version}`;
 const hasDraftChanges = (draft: LocationDraft) =>
   JSON.stringify(draft.skus) !== JSON.stringify(draft.data.skus) ||
   JSON.stringify(draft.photos) !== JSON.stringify(draft.data.inspection?.photos || []) ||
@@ -61,7 +60,8 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   // Input search state
   const [inputLoc, setInputLoc] = useState('');
   const [manualInput, setManualInput] = useState(false);
-  const [exporting, setExporting] = useState(false);
+  // Android scanner services may inject text through the IME; match DeviceTestPage.
+  const androidScanner = /Android/i.test(navigator.userAgent);
   const [uploads, setUploads] = useState<PhotoUpload[]>([]);
   const [surplusProgress, setSurplusProgress] = useState(0);
   const [surplusUploadFailed, setSurplusUploadFailed] = useState(false);
@@ -98,18 +98,16 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   const [surplusPhotoPreview, setSurplusPhotoPreview] = useState<string | null>(null);
   const [uploadingSurplusPhoto, setUploadingSurplusPhoto] = useState(false);
 
-  // Quick Location Suggestions / Autocomplete
-  const [locSuggestions, setLocSuggestions] = useState<string[]>([]);
-
   const scanInputRef = useRef<HTMLInputElement>(null);
+  const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const surplusFileInputRef = useRef<HTMLInputElement>(null);
 
-  activeKey.current = locData ? locationKey(locData.hallId, locData.locationCode) : null;
+  activeKey.current = locData ? locationKey(locData.hallId, locData.locationCode, locData.referenceImportId) : null;
   const photoBusy = uploads.some((upload) => upload.status === 'uploading');
   const photoFailed = uploads.some((upload) => upload.status === 'error');
   useEffect(() => {
-    if (locData) locationDrafts.set(locationKey(locData.hallId, locData.locationCode), {
+    if (locData) locationDrafts.set(locationKey(locData.hallId, locData.locationCode, locData.referenceImportId), {
       data: locData, skus: skuList, photos, notes: locationNotes, empty: isEmptyConfirmed, uploads,
     });
   }, [locData, skuList, photos, locationNotes, isEmptyConfirmed, uploads]);
@@ -152,25 +150,30 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
   // Load Location Audit
   const handleQueryLocation = async (targetLoc: string) => {
+    if (scanTimer.current) clearTimeout(scanTimer.current);
     const loc = targetLoc.trim();
-    if (!loc || loading || saving || photoBusy || uploadsInFlight.current || uploadingSurplusPhoto) return;
+    if (!loc) return;
+    if (saving || photoBusy || uploadsInFlight.current || uploadingSurplusPhoto) {
+      setErrorMsg('保存或上传中，请稍后重新扫码');
+      return;
+    }
     const id = ++requestId.current;
     setManualInput(false);
-    if (locData) locationDrafts.set(locationKey(locData.hallId, locData.locationCode), {
+    if (locData) locationDrafts.set(locationKey(locData.hallId, locData.locationCode, locData.referenceImportId), {
       data: locData, skus: skuList, photos, notes: locationNotes, empty: isEmptyConfirmed, uploads,
     });
     setLoading(true);
     setErrorMsg(null);
     setSaveSuccessMsg(null);
-    setLocSuggestions([]);
 
     try {
-      const cachedDraft = locationDrafts.get(locationKey(currentHall, loc));
+      const freshData = await fetchLocationAudit(currentHall, loc);
+      const cachedDraft = locationDrafts.get(locationKey(currentHall, loc, freshData.referenceImportId));
       const draft = cachedDraft && hasDraftChanges(cachedDraft) ? cachedDraft : undefined;
-      const data = draft?.data || await fetchLocationAudit(currentHall, loc);
+      const data = draft?.data || freshData;
       if (id !== requestId.current) return;
       setLocData(data);
-      setInputLoc(data.locationCode);
+      setInputLoc(androidScanner ? '' : data.locationCode);
 
       // Initialize SKU inspection state
       const initializedSkus: LocationSkuItem[] = data.skus.map((s: LocationSkuItem) => ({
@@ -198,29 +201,51 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       // Re-focus scanner input
       setTimeout(() => {
         scanInputRef.current?.focus();
-        scanInputRef.current?.select();
-      }, 100);
+        if (!androidScanner) scanInputRef.current?.select();
+      }, 0);
     }
   };
-
-  // Autocomplete fetch on typing
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (inputLoc.trim().length >= 2) {
-        const list = await fetchLocationsList(currentHall, inputLoc.trim());
-        setLocSuggestions(list);
-      } else {
-        setLocSuggestions([]);
-      }
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [inputLoc, currentHall]);
 
   // Handle Scanner Enter Key
   const handleScanKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' || e.key === 'Tab') {
       e.preventDefault();
-      handleQueryLocation(inputLoc);
+      handleQueryLocation(e.currentTarget.value);
+    }
+  };
+
+  // Keyboard-wedge scanners can start while a previous action button has focus.
+  useEffect(() => {
+    const captureScan = (event: KeyboardEvent) => {
+      if (manualInput || shortageModalSku || showSurplusModal || event.ctrlKey || event.altKey || event.metaKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]') || event.key.length !== 1 || event.key === ' ') return;
+      event.preventDefault();
+      const input = scanInputRef.current;
+      if (!input) return;
+      input.focus();
+      input.value = event.key.toUpperCase();
+      setInputLoc(input.value);
+      input.setSelectionRange(input.value.length, input.value.length);
+    };
+    document.addEventListener('keydown', captureScan);
+    return () => document.removeEventListener('keydown', captureScan);
+  }, [manualInput, shortageModalSku, showSurplusModal]);
+
+  useEffect(() => () => { if (scanTimer.current) clearTimeout(scanTimer.current); }, []);
+  useEffect(() => {
+    if (!saveSuccessMsg) return;
+    const timer = setTimeout(() => setSaveSuccessMsg(null), 500);
+    return () => clearTimeout(timer);
+  }, [saveSuccessMsg]);
+
+  const handleScanChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.currentTarget.value.toUpperCase();
+    setInputLoc(value);
+    if (scanTimer.current) clearTimeout(scanTimer.current);
+    // Support scanner configurations without an Enter/Tab suffix; manual typing stays explicit.
+    if (!manualInput && /^\d{3}-\d{3}-\d{1,2}$/.test(value)) {
+      scanTimer.current = setTimeout(() => handleQueryLocation(value), 150);
     }
   };
 
@@ -243,19 +268,16 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     triggerHaptic(true);
   };
 
-  // 1-Tap All Normal for entire location
-  const handleSetAllNormal = () => {
-    setSkuList((prev) =>
-      prev.map((item) => ({
-        ...item,
-        actualQty: item.systemQty,
-        differenceQty: 0,
-        discrepancyType: 'NORMAL',
-        notes: '一键确认相符',
-      }))
-    );
+  // This shortcut confirms quantities AND saves; the save button preserves edited results.
+  const handleSetAllNormal = async () => {
+    if (skuList.some((item) => item.differenceQty) && !confirm('将当前库位全部改为账面数量并保存，是否继续？')) return;
+    const normalSkus = skuList.map((item) => ({
+      ...item, actualQty: item.systemQty, differenceQty: 0,
+      discrepancyType: 'NORMAL' as const, notes: '一键确认相符',
+    }));
+    setSkuList(normalSkus);
     setIsEmptyConfirmed(false);
-    triggerHaptic(true);
+    await handleSaveInspection(normalSkus, false);
   };
 
   // Confirm Empty Location
@@ -414,7 +436,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   const uploadPhoto = async (task: PhotoUpload) => {
     if (!locData) return;
     setErrorMsg(null);
-    const key = locationKey(locData.hallId, locData.locationCode);
+    const key = locationKey(locData.hallId, locData.locationCode, locData.referenceImportId);
     uploadsInFlight.current++;
     const update = (patch: Partial<PhotoUpload>, photo?: InspectionPhotoItem) => {
       const draft = locationDrafts.get(key);
@@ -449,7 +471,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     const tasks: PhotoUpload[] = files.map((file) => ({
       id: crypto.randomUUID(), file, progress: 0, status: 'uploading',
     }));
-    const key = locationKey(locData.hallId, locData.locationCode);
+    const key = locationKey(locData.hallId, locData.locationCode, locData.referenceImportId);
     locationDrafts.set(key, {
       data: locData, skus: skuList, photos, notes: locationNotes,
       empty: isEmptyConfirmed, uploads: [...uploads, ...tasks],
@@ -460,26 +482,13 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     }
   };
 
-  const handleExport = async (mode: 'all' | 'differences') => {
-    setExporting(true);
-    setErrorMsg(null);
-    try {
-      const { downloadInspectionResults } = await import('../services/inspectionExport');
-      await downloadInspectionResults(currentHall, mode);
-    } catch (error) {
-      setErrorMsg(error instanceof Error ? error.message : String(error));
-    } finally {
-      setExporting(false);
-    }
-  };
-
   // Save current location inspection to Cloudflare D1
-  const handleSaveInspection = async () => {
+  const handleSaveInspection = async (items = skuList, empty = isEmptyConfirmed) => {
     if (!locData || saving || photoBusy || photoFailed || uploadingSurplusPhoto) return;
 
     // Check if all SKUs have been verified
-    const unverifiedCount = skuList.filter((s) => s.actualQty === null || s.actualQty === undefined).length;
-    if (unverifiedCount > 0 && !isEmptyConfirmed) {
+    const unverifiedCount = items.filter((s) => s.actualQty === null || s.actualQty === undefined).length;
+    if (unverifiedCount > 0 && !empty) {
       const confirmSave = confirm(`当前库位仍有 ${unverifiedCount} 个 SKU 未核查确认，是否确定提交暂存？`);
       if (!confirmSave) return;
     }
@@ -488,17 +497,18 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     setSaveSuccessMsg(null);
     setErrorMsg(null);
 
-    const hasAnyDiscrepancy = skuList.some((s) => s.discrepancyType && s.discrepancyType !== 'NORMAL');
-    const incomplete = unverifiedCount > 0 || (skuList.length === 0 && !isEmptyConfirmed);
+    const hasAnyDiscrepancy = items.some((s) => s.discrepancyType && s.discrepancyType !== 'NORMAL');
+    const incomplete = unverifiedCount > 0 || (items.length === 0 && !empty);
     const finalStatus = incomplete ? 'IN_PROGRESS' : hasAnyDiscrepancy ? 'PENDING_REVIEW' : 'VERIFIED';
 
     const payload = {
       hallId: currentHall,
+      referenceImportId: locData.referenceImportId,
       locationCode: locData.locationCode,
-      isEmptyConfirmed,
+      isEmptyConfirmed: empty,
       status: finalStatus,
       notes: locationNotes,
-      skus: skuList.filter((s) => s.actualQty !== null && s.actualQty !== undefined).map((s) => ({
+      skus: items.filter((s) => s.actualQty !== null && s.actualQty !== undefined).map((s) => ({
         sku: s.sku,
         barcode: s.barcode,
         eBarcode: s.eBarcode,
@@ -518,19 +528,22 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
     try {
       const saved = await saveLocationInspection(payload);
-      const savedData: LocationAuditData = { ...locData, skus: skuList, inspection: {
-        inspectionId: saved.inspectionId, status: finalStatus, isEmptyConfirmed,
+      const savedData: LocationAuditData = { ...locData, skus: items,
+        lastInspection: incomplete ? locData.lastInspection : { completedAt: saved.savedAt, versionNumber: locData.versionNumber }, inspection: {
+        inspectionId: saved.inspectionId, status: finalStatus, isEmptyConfirmed: empty,
         notes: locationNotes, completedAt: incomplete ? null : saved.savedAt, photos,
       } };
-      const key = locationKey(locData.hallId, locData.locationCode);
-      locationDrafts.set(key, { data: savedData, skus: skuList, photos,
-        notes: locationNotes, empty: isEmptyConfirmed, uploads: [],
+      const key = locationKey(locData.hallId, locData.locationCode, locData.referenceImportId);
+      locationDrafts.set(key, { data: savedData, skus: items, photos,
+        notes: locationNotes, empty, uploads: [],
       });
       if (activeKey.current !== key) return;
       setLocData(savedData);
       setUploads([]);
-      setSaveSuccessMsg(`库位 ${locData.locationCode} ${incomplete ? '暂存' : '核查保存'}成功！`);
+      setSaveSuccessMsg(incomplete ? '已暂存' : '已保存');
       triggerHaptic(true);
+      // IME-based PDA scanners need an editable target after the save button took focus.
+      if (androidScanner) scanInputRef.current?.focus();
 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -587,14 +600,16 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             <input
               ref={scanInputRef}
               type="text"
-              inputMode={manualInput ? 'text' : 'none'}
+              inputMode={manualInput ? 'text' : androidScanner ? undefined : 'none'}
               value={inputLoc}
-              onChange={(e) => setInputLoc(e.target.value.toUpperCase())}
+              onChange={handleScanChange}
               onKeyDown={handleScanKeyDown}
               placeholder="扫库位条码 / 输入库位 (如 109-047-1)"
               className="w-full bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-8 py-2.5 text-base font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 transition"
               autoFocus
-              autoCapitalize="characters"
+              autoComplete="off"
+              spellCheck={false}
+              autoCapitalize="off"
               autoCorrect="off"
             />
             <Scan className="w-5 h-5 text-slate-400 absolute left-2.5 top-3" />
@@ -614,7 +629,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
           <button
             type="button"
-            aria-label={manualInput ? '关闭软键盘' : '手动输入库位'}
+            aria-label={manualInput ? '返回扫码模式' : '手动输入库位'}
             aria-pressed={manualInput}
             onClick={() => {
               scanInputRef.current?.blur();
@@ -634,23 +649,6 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             {loading ? <RotateCw className="w-4 h-4 animate-spin" /> : '查询'}
           </button>
         </div>
-
-        {/* Autocomplete dropdown suggestions */}
-        {locSuggestions.length > 0 && (
-          <div className="absolute left-3 right-3 top-14 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-30 max-h-48 overflow-y-auto divide-y divide-slate-100">
-            {locSuggestions.map((loc) => (
-              <button
-                key={loc}
-                type="button"
-                onClick={() => handleQueryLocation(loc)}
-                className="w-full text-left px-3 py-2 text-sm font-mono hover:bg-blue-50 text-slate-800 flex items-center justify-between"
-              >
-                <span>{loc}</span>
-                <span className="text-xs text-blue-600 font-sans">点击载入</span>
-              </button>
-            ))}
-          </div>
-        )}
 
         {/* Adjacent middle-segment codes; actual row ends are entered manually. */}
         {locData?.navigation && (
@@ -680,12 +678,6 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
         )}
       </div>
 
-      <div className="flex gap-2 text-xs">
-        <button type="button" disabled={exporting || saving} onClick={() => handleExport('differences')} className="bg-white border border-slate-200 text-slate-700 px-3 py-2 rounded-lg disabled:opacity-50">仅导出差异</button>
-        <button type="button" disabled={exporting || saving} onClick={() => handleExport('all')} className="bg-white border border-slate-200 text-slate-700 px-3 py-2 rounded-lg disabled:opacity-50">导出全部核查结果</button>
-        {exporting && <span className="text-slate-500 self-center">导出中…</span>}
-      </div>
-
       {/* Messages */}
       {errorMsg && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2.5 rounded-lg text-xs flex items-center gap-2">
@@ -694,7 +686,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
         </div>
       )}
       {saveSuccessMsg && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-2 rounded-lg text-xs flex items-center gap-2">
+        <div role="status" className="fixed top-28 left-1/2 -translate-x-1/2 z-50 bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-2 rounded-lg text-xs flex items-center gap-2 pointer-events-none shadow-sm">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
           <span className="font-medium">{saveSuccessMsg}</span>
         </div>
@@ -723,6 +715,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 <button
                   type="button"
                   onClick={handleSetAllNormal}
+                  disabled={saving || loading || photoBusy || photoFailed || uploadingSurplusPhoto}
                   className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-sm active:scale-95 transition"
                 >
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
@@ -730,6 +723,14 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 </button>
               )}
             </div>
+
+            {locData.lastInspection && (
+              <p className="mt-2 text-xs text-slate-500">
+                {locData.lastInspection.versionNumber === locData.versionNumber ? '已核查' : '上次已核查'}：
+                {new Date(locData.lastInspection.completedAt).toLocaleString('zh-CN', { hour12: false })}
+                {locData.lastInspection.versionNumber !== locData.versionNumber && `（V${locData.lastInspection.versionNumber}，当前 V${locData.versionNumber} 待核查）`}
+              </p>
+            )}
 
             {/* Sparse Location Notification */}
             {!locData.hasBookStock && (

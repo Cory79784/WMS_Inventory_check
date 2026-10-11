@@ -37,7 +37,7 @@ describe('Real local D1/R2 inspection API', () => {
     const response = await mf.dispatchFetch('http://localhost/api/inventory/inspection/export?hallId=H1&mode=all');
     expect(response.status).toBe(200);
     const { rows } = await response.json() as any;
-    expect(rows.map((r: any) => r.sku)).toEqual(['N', 'D', '空库位']);
+    expect(rows.map((r: any) => r.sku)).toEqual(['N', 'D', '无sku']);
     expect(rows.every((r: any) => r.referenceImportId === 'v1' && r.versionNumber === 1)).toBe(true);
   });
   it('exports only inventory anomalies in differences mode', async () => {
@@ -95,4 +95,62 @@ describe('Real local D1/R2 inspection API', () => {
     expect(reloaded.data.navigation.prevLocationCode).toBe('109-032-1');
     expect(reloaded.data.navigation.nextLocationCode).toBe('109-034-1');
   });
+  it('keeps all three SKUs and sums repeated WMS lines at one location', async () => {
+    const db = await mf.getD1Database('DB');
+    await db.prepare(`INSERT INTO inventory_stock_rows (id,import_id,hall_id,location_code,sku,system_qty)
+      VALUES ('a1','v2','H1','109-040-1','A',2),('a2','v2','H1','109-040-1','A',3),
+        ('b1','v2','H1','109-040-1','B',4),('c1','v2','H1','109-040-1','C',5)`).run();
+    const result = await (await mf.dispatchFetch('http://localhost/api/inventory/location?hallId=H1&locationCode=109-040-1')).json() as any;
+    expect(result.data.skus.map((sku: any) => [sku.sku, sku.systemQty])).toEqual([['A',5],['B',4],['C',5]]);
+  });
+  it('updates the same inspection on repeated saves instead of adding another result', async () => {
+    const save = async (actualQty: number) => (await (await mf.dispatchFetch('http://localhost/api/inventory/inspection/save', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        hallId: 'H1', locationCode: '109-040-1', referenceImportId: 'v2', status: 'VERIFIED',
+        skus: [{ sku: 'A', systemQty: 5, actualQty, differenceQty: actualQty-5, discrepancyType: actualQty===5?'NORMAL':'SHORTAGE' }],
+      }),
+    })).json()) as any;
+    const first = await save(5);
+    const db = await mf.getD1Database('DB');
+    await db.prepare("UPDATE location_inspections SET completed_at = '2020-01-01T00:00:00Z' WHERE inspection_id = ?").bind(first.inspectionId).run();
+    const second = await save(4);
+    expect(second.inspectionId).toBe(first.inspectionId);
+    const result = await db.prepare(`SELECT l.completed_at, s.actual_qty FROM location_inspections l
+      JOIN sku_inspections s ON l.inspection_id=s.inspection_id WHERE l.inspection_id=?`).bind(first.inspectionId).all();
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].actual_qty).toBe(4);
+    expect(result.results[0].completed_at).toBe(second.savedAt);
+  });
+  it('reports an old audit timestamp without applying its counts to a newer WMS version', async () => {
+    const db = await mf.getD1Database('DB');
+    await db.prepare(`INSERT INTO inventory_stock_rows (id,import_id,hall_id,location_code,sku,system_qty)
+      VALUES ('new-n','v2','H1','109-027-1','N',20)`).run();
+    const result = await (await mf.dispatchFetch('http://localhost/api/inventory/location?hallId=H1&locationCode=109-027-1')).json() as any;
+    expect(result.data.referenceImportId).toBe('v2');
+    expect(result.data.inspection).toBeNull();
+    expect(result.data.skus[0]).toMatchObject({ systemQty: 20, actualQty: null });
+    expect(result.data.lastInspection).toMatchObject({ versionNumber: 1, completedAt: '2026-10-11' });
+    const staleSave = await mf.dispatchFetch('http://localhost/api/inventory/inspection/save', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hallId: 'H1', locationCode: '109-027-1', referenceImportId: 'v1', skus: [] }),
+    });
+    expect(staleSave.status).toBe(409);
+  });
+  it('exports SKU-only, barcode-only, and unknown goods into separate identifier columns with photo links', async () => {
+    const db = await mf.getD1Database('DB');
+    await db.prepare(`INSERT INTO location_inspections (inspection_id,hall_id,location_code,reference_import_id,status,completed_at)
+      VALUES ('identifiers','H1','109-050-1','v2','PENDING_REVIEW','2026-10-11T12:00:00Z')`).run();
+    await db.prepare(`INSERT INTO sku_inspections (id,inspection_id,sku,barcode,system_qty,actual_qty,difference_qty,discrepancy_type)
+      VALUES ('id1','identifiers','ONLY-SKU',NULL,0,1,1,'SURPLUS'),
+      ('id2','identifiers','条码:123456','123456',0,1,1,'SURPLUS'),
+      ('id3','identifiers','无SKU未知品',NULL,0,1,1,'NO_SKU_SURPLUS')`).run();
+    await db.prepare("INSERT INTO inspection_photos (photo_id,inspection_id,object_key) VALUES ('unknown-photo','identifiers','original.png')").run();
+    for (const mode of ['all', 'differences']) {
+      const exported = await (await mf.dispatchFetch(`http://localhost/api/inventory/inspection/export?hallId=H1&mode=${mode}`)).json() as any;
+      const rows = exported.rows.filter((r: any) => r.inspectionId === 'identifiers');
+      expect(rows.map((r: any) => [r.sku,r.barcode])).toEqual([['ONLY-SKU',''],['','123456'],['无sku','']]);
+      expect(rows.every((r: any) => r.photoKeys[0] === 'original.png')).toBe(true);
+    }
+  });
+
 });

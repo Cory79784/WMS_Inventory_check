@@ -6,7 +6,7 @@ import type { InspectionExportRow } from '../src/types';
 
 const originalPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4////fwAJ+wP9KobjigAAAABJRU5ErkJggg==';
 const row: InspectionExportRow = {
-  inspectionId: 'insp1', hallId: 'H1', locationCode: '109-028-1', sku: 'SKU-1',
+  inspectionId: 'insp1', hallId: 'H1', locationCode: '109-028-1', sku: 'SKU-1', barcode: '',
   systemQty: 10, actualQty: 8, differenceQty: -2, completedAt: '2026-10-11T10:00:00Z',
   versionNumber: 1, referenceImportId: 'old-locked-version', notes: '少货', photoKeys: ['a', 'b'],
 };
@@ -29,17 +29,20 @@ describe('Excel inspection results', () => {
     const sheet = restored.getWorksheet('库存核查记录')!;
     expect(sheet.rowCount).toBe(4);
     expect(sheet.getRow(2).getCell(3).value).toBe('SKU-1');
-    expect(sheet.getRow(2).getCell(4).value).toBe(10);
-    expect(sheet.getRow(2).getCell(5).value).toBe(8);
-    expect(sheet.getRow(2).getCell(6).value).toBe(-2);
-    expect(sheet.getRow(2).getCell(8).value).toBe('V1 (old-locked-version)');
+    expect(sheet.getRow(1).getCell(4).value).toBe('Barcode');
+    expect(sheet.getRow(2).getCell(4).value).toBe('');
+    expect(sheet.getRow(1).getCell(1).fill).toMatchObject({ type: 'pattern', fgColor: { argb: 'FF1E293B' } });
+    expect(sheet.getRow(2).getCell(5).value).toBe(10);
+    expect(sheet.getRow(2).getCell(6).value).toBe(8);
+    expect(sheet.getRow(2).getCell(7).value).toBe(-2);
+    expect(sheet.getRow(2).getCell(9).value).toBe('V1 (old-locked-version)');
     expect(sheet.getRow(4).getCell(3).value).toBe('空库位');
     const images = sheet.getImages();
     expect(images).toHaveLength(4);
     expect(images[0].range.tl.nativeRow).toBe(1);
     expect(images[1].range.tl.nativeRow).toBe(1);
-    expect(images[0].range.tl.nativeCol).toBe(9);
-    expect(images[1].range.tl.nativeCol).toBe(10);
+    expect(images[0].range.tl.nativeCol).toBe(10);
+    expect(images[1].range.tl.nativeCol).toBe(11);
     expect(loaded).toEqual(['a', 'b']);
     const zip = await JSZip.loadAsync(buffer);
     const media = Object.keys(zip.files).filter((name) => name.startsWith('xl/media/') && !zip.files[name].dir);

@@ -4,11 +4,12 @@ import { LocationInspectionPage } from './pages/LocationInspectionPage';
 import { DeviceTestPage } from './pages/DeviceTestPage';
 import { ArchitecturePage } from './pages/ArchitecturePage';
 import { WMSImportPage } from './pages/WMSImportPage';
+import { InspectionExportPage } from './pages/InspectionExportPage';
 import { HallId } from './types';
 
 export const App: React.FC = () => {
   const [currentHall, setCurrentHall] = useState<HallId>('H1');
-  const [activeView, setActiveView] = useState<'inspect' | 'test' | 'import' | 'arch'>('inspect');
+  const [activeView, setActiveView] = useState<'inspect' | 'test' | 'import' | 'export' | 'arch'>('inspect');
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
@@ -28,6 +29,7 @@ export const App: React.FC = () => {
           />
         )}
         {activeView === 'import' && <WMSImportPage currentHall={currentHall} />}
+        {activeView === 'export' && <InspectionExportPage currentHall={currentHall} />}
         {activeView === 'test' && <DeviceTestPage />}
         {activeView === 'arch' && <ArchitecturePage />}
       </main>

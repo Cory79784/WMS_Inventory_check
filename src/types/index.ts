@@ -81,6 +81,7 @@ export interface InspectionExportRow {
   hallId: string;
   locationCode: string;
   sku: string;
+  barcode: string;
   systemQty: number;
   actualQty: number;
   differenceQty: number;
@@ -98,6 +99,7 @@ export interface LocationAuditData {
   versionNumber: number;
   sourceExportedAt: string | null;
   hasBookStock: boolean;
+  lastInspection?: { completedAt: string; versionNumber: number } | null;
   skus: LocationSkuItem[];
   inspection: {
     inspectionId?: string;
