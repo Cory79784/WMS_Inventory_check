@@ -16,6 +16,8 @@ import {
   PlusCircle,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   RotateCw,
   X,
   FileQuestion,
@@ -277,6 +279,16 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     if (!manualInput && /^\d{3}-\d{3}-\d{1,2}$/.test(value)) {
       scanTimer.current = setTimeout(() => handleQueryLocation(value), 150);
     }
+  };
+
+  // Vertical navigation changes only the first numeric segment.
+  const verticalLocation = (offset: -1 | 1): string | null => {
+    if (!locData) return null;
+    const match = /^(\\d+)-(\\d+)-(\\d+)$/.exec(locData.locationCode);
+    if (!match) return null;
+    const first = Number(match[1]) + offset;
+    if (!Number.isSafeInteger(first) || first < 1 || String(first).length > match[1].length) return null;
+    return `${String(first).padStart(match[1].length, '0')}-${match[2]}-${match[3]}`;
   };
 
   // 1-Tap Normal for single SKU
@@ -696,6 +708,23 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
           </button>
         </div>
 
+        {/* First-segment vertical navigation; other segments remain unchanged. */}
+        {locData && /^\\d+-\\d+-\\d+$/.test(locData.locationCode) && (
+          <div className="flex items-center justify-center gap-3 mt-2 text-xs">
+            <button type="button" aria-label="上一排库位" onPointerDown={keepScannerFocus}
+              disabled={loading || saving || photoBusy || !verticalLocation(-1)}
+              onClick={() => { const code = verticalLocation(-1); if (code) handleQueryLocation(code); }}
+              className="flex items-center gap-1 px-3 py-1 rounded bg-slate-100 disabled:opacity-30">
+              <ChevronUp className="w-5 h-5" /> {verticalLocation(-1) || '—'}
+            </button>
+            <button type="button" aria-label="下一排库位" onPointerDown={keepScannerFocus}
+              disabled={loading || saving || photoBusy || !verticalLocation(1)}
+              onClick={() => { const code = verticalLocation(1); if (code) handleQueryLocation(code); }}
+              className="flex items-center gap-1 px-3 py-1 rounded bg-slate-100 disabled:opacity-30">
+              <ChevronDown className="w-5 h-5" /> {verticalLocation(1) || '—'}
+            </button>
+          </div>
+        )}
         {/* Adjacent middle-segment codes; actual row ends are entered manually. */}
         {locData?.navigation && (
           <div className="flex items-center justify-between gap-1 mt-2 pt-2 border-t border-slate-100 text-xs text-slate-500">
@@ -707,10 +736,10 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
               onClick={() => locData.navigation.prevLocationCode && handleQueryLocation(locData.navigation.prevLocationCode)}
               className="flex flex-col sm:flex-row items-center gap-1 p-2 rounded bg-slate-100 text-slate-700 disabled:opacity-30 active:bg-slate-200"
             >
-              <ChevronLeft className="w-8 h-8 shrink-0" />
+              <ChevronLeft className="w-5 h-5 shrink-0" />
               <span className="font-mono">{locData.navigation.prevLocationCode || '—'}</span>
             </button>
-            <strong className="font-mono text-blue-600 text-base">{locData.locationCode}</strong>
+            <strong className="font-mono text-blue-600 text-sm">{locData.locationCode}</strong>
             <button
               type="button"
               onPointerDown={keepScannerFocus}
@@ -720,7 +749,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
               className="flex flex-col-reverse sm:flex-row items-center gap-1 p-2 rounded bg-slate-100 text-slate-700 disabled:opacity-30 active:bg-slate-200"
             >
               <span className="font-mono">{locData.navigation.nextLocationCode || '—'}</span>
-              <ChevronRight className="w-8 h-8 shrink-0" />
+              <ChevronRight className="w-5 h-5 shrink-0" />
             </button>
           </div>
         )}
