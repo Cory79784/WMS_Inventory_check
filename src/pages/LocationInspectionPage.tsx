@@ -709,7 +709,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
         </div>
 
         {/* First-segment vertical navigation; other segments remain unchanged. */}
-        {locData && /^\\d+-\\d+-\\d+$/.test(locData.locationCode) && (
+        {locData && /^\d+-\d+-\d+$/.test(locData.locationCode) && (
           <div className="flex items-center justify-center gap-3 mt-2 text-xs">
             <button type="button" aria-label="上一排库位" onPointerDown={keepScannerFocus}
               disabled={loading || saving || photoBusy || !verticalLocation(-1)}
