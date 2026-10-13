@@ -1,4 +1,6 @@
+import { t } from '../i18n';
 import React, { useState, useEffect, useRef } from 'react';
+import { registerLanguageSafety } from '../i18n/safety';
 import {
   fetchHealth,
   fetchD1Data,
@@ -59,6 +61,13 @@ export const DeviceTestPage: React.FC = () => {
   // Device Info
   const userAgent = navigator.userAgent;
   const isAndroid = /Android/i.test(userAgent);
+
+  const languageSafetyRef = useRef({dirty: false, busy: false});
+  languageSafetyRef.current = {dirty: Boolean(selectedPhoto || d1TestVal || offlinePendingQueue.length || scanInputValue), busy: uploadStatus === 'UPLOADING' || d1Loading};
+  useEffect(() => registerLanguageSafety('device', {
+    dirty: () => languageSafetyRef.current.dirty,
+    busy: () => languageSafetyRef.current.busy,
+  }), []);
 
   // Autofocus scanner input
   useEffect(() => {
@@ -239,7 +248,7 @@ export const DeviceTestPage: React.FC = () => {
   // Handle D1 test write
   const handleD1Write = async () => {
     if (!d1TestKey || !d1TestVal) {
-      setD1Message('请输入测试 Key 和 Value');
+      setD1Message(t('inputKey'));
       return;
     }
     setD1Loading(true);
@@ -251,12 +260,12 @@ export const DeviceTestPage: React.FC = () => {
         d1TestVal,
         `Device: ${isAndroid ? 'Android PDA' : 'Desktop Browser'} - UA: ${userAgent.substring(0, 40)}`
       );
-      setD1Message(`✅ D1 写入成功: ID ${res.record.id}`);
+      setD1Message(`${t('d1Success')} ${res.record.id}`);
       setD1TestVal('');
       loadDiagnostics();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setD1Message(`❌ 写入失败: ${msg}`);
+      setD1Message(`${t('d1Failure')} ${msg}`);
     } finally {
       setD1Loading(false);
     }
@@ -282,11 +291,11 @@ export const DeviceTestPage: React.FC = () => {
         await writeD1TestRecord(item.key, item.value, 'Synced from Offline Queue');
       }
       setOfflinePendingQueue([]);
-      setD1Message('✅ 离线队列已全部同步至云端 D1');
+      setD1Message(t('queueSynced'));
       loadDiagnostics();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setD1Message(`同步失败: ${msg}`);
+      setD1Message(`${t('syncFailure')} ${msg}`);
     } finally {
       setD1Loading(false);
     }
@@ -301,10 +310,10 @@ export const DeviceTestPage: React.FC = () => {
             <Smartphone className="w-5 h-5 text-brand-600" />
             <div>
               <h1 className="text-base font-bold text-slate-800">
-                Phase 0: PDA 设备与技术可行性验证
+                {t('deviceTitle')}
               </h1>
               <p className="text-xs text-slate-500">
-                {isAndroid ? '检测到安卓移动设备 (Android PDA 环境)' : '桌面端开发测试环境'}
+                {isAndroid ? t('androidFound') : t('desktopFound')}
               </p>
             </div>
           </div>
@@ -312,12 +321,12 @@ export const DeviceTestPage: React.FC = () => {
             {isOnline ? (
               <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-medium border border-emerald-200">
                 <Wifi className="w-3.5 h-3.5" />
-                {pingLatency !== null ? `${pingLatency}ms` : '在线'}
+                {pingLatency !== null ? `${pingLatency}ms` : t('online')}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 font-medium border border-rose-200">
                 <WifiOff className="w-3.5 h-3.5" />
-                网络中断
+                {t('networkDown')}
               </span>
             )}
           </div>
@@ -335,7 +344,7 @@ export const DeviceTestPage: React.FC = () => {
           }`}
         >
           <Barcode className="w-4 h-4" />
-          PDA 扫码测试
+          {t('scannerTest')}
         </button>
         <button
           onClick={() => {
@@ -349,7 +358,7 @@ export const DeviceTestPage: React.FC = () => {
           }`}
         >
           <Camera className="w-4 h-4" />
-          PDA 相机与 R2
+          {t('cameraTest')}
         </button>
         <button
           onClick={() => {
@@ -363,7 +372,7 @@ export const DeviceTestPage: React.FC = () => {
           }`}
         >
           <Database className="w-4 h-4" />
-          D1 读写与多机
+          {t('d1Test')}
         </button>
         <button
           onClick={() => setActiveTab('network')}
@@ -374,7 +383,7 @@ export const DeviceTestPage: React.FC = () => {
           }`}
         >
           <Layers className="w-4 h-4" />
-          离线与安全
+          {t('offlineTest')}
         </button>
       </div>
 
@@ -385,7 +394,7 @@ export const DeviceTestPage: React.FC = () => {
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
                 <Barcode className="w-4 h-4 text-brand-600" />
-                Keyboard Wedge 扫码捕获
+                {t('wedgeTest')}
               </h2>
               <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
                 <input
@@ -394,22 +403,23 @@ export const DeviceTestPage: React.FC = () => {
                   onChange={(e) => setContinuousScan(e.target.checked)}
                   className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                 />
-                连续扫码保持焦点
+                {t('focusTest')}
               </label>
             </div>
 
             <p className="text-xs text-slate-500 leading-relaxed">
-              请按下 PDA 侧面实体扫描键对准库位条码或 SKU 条码。如果设备工作在 Keyboard Wedge 模式，输入框将高速自动填入条码并附带回车或 Tab 键。
+              {t('scanInstruction')}
             </p>
 
             <div className="space-y-2">
               <input
                 ref={scanInputRef}
+                dir="ltr"
                 type="text"
                 value={scanInputValue}
                 onChange={(e) => setScanInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="点击此处或直接按 PDA 侧键扫码..."
+                placeholder={t('scanTap')}
                 className="w-full px-3 py-2.5 bg-slate-50 border-2 border-brand-500 rounded-lg text-slate-900 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                 autoComplete="off"
                 autoCorrect="off"
@@ -418,13 +428,13 @@ export const DeviceTestPage: React.FC = () => {
               />
 
               <div className="flex flex-wrap gap-1.5 pt-1">
-                <span className="text-xs text-slate-400 self-center mr-1">电脑端模拟:</span>
+                <span className="text-xs text-slate-400 self-center mr-1">{t('computerSim')}</span>
                 <button
                   type="button"
                   onClick={() => simulateScan('120-075-1')}
                   className="text-xs px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-300"
                 >
-                  库位: 120-075-1
+                  {t('location')}: <span dir="ltr">120-075-1</span>
                 </button>
                 <button
                   type="button"
@@ -438,7 +448,7 @@ export const DeviceTestPage: React.FC = () => {
                   onClick={() => simulateScan('eBarcode-46')}
                   className="text-xs px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-300"
                 >
-                  多值条码: 46
+                  {t('barcodeAmbiguous')} <span dir="ltr">46</span>
                 </button>
               </div>
             </div>
@@ -448,7 +458,7 @@ export const DeviceTestPage: React.FC = () => {
           <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700">
-                扫码记录流 ({scanEvents.length})
+                {t('scanEvents')} ({scanEvents.length})
               </span>
               {scanEvents.length > 0 && (
                 <button
@@ -456,14 +466,14 @@ export const DeviceTestPage: React.FC = () => {
                   onClick={() => setScanEvents([])}
                   className="text-xs text-slate-400 hover:text-slate-600 underline"
                 >
-                  清空日志
+                  {t('clearLog')}
                 </button>
               )}
             </div>
 
             {scanEvents.length === 0 ? (
               <div className="text-center py-6 text-slate-400 text-xs">
-                暂无扫码事件。请按扫描键或点击上方模拟条码。
+                {t('noScan')}
               </div>
             ) : (
               <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
@@ -490,10 +500,10 @@ export const DeviceTestPage: React.FC = () => {
                         }`}
                       >
                         {evt.likelyType === 'LOCATION'
-                          ? '物理库位格式'
+                          ? t('locationFormat')
                           : evt.likelyType === 'SKU_OR_BARCODE'
-                          ? '商品/条码格式'
-                          : '通用格式'}
+                          ? t('productFormat')
+                          : t('generalFormat')}
                       </span>
 
                       <span
@@ -503,21 +513,21 @@ export const DeviceTestPage: React.FC = () => {
                             : 'bg-amber-100 text-amber-800'
                         }`}
                       >
-                        {evt.inputMethod === 'keyboard-wedge' ? '硬件扫描头 Wedge' : '人工慢速键盘'}
+                        {evt.inputMethod === 'keyboard-wedge' ? t('wedgeHardware') : t('slowKeyboard')}
                       </span>
 
                       <span className="text-slate-500">
-                        击键间隔: {evt.charIntervalAvgMs}ms
+                        {t('keystrokeGap')} {evt.charIntervalAvgMs}ms
                       </span>
 
                       {evt.detectedEnter && (
                         <span className="bg-slate-200 text-slate-700 px-1 rounded">
-                          Enter 结束符
+                          {t('endEnter')}
                         </span>
                       )}
                       {evt.detectedTab && (
                         <span className="bg-slate-200 text-slate-700 px-1 rounded">
-                          Tab 结束符
+                          {t('endTab')}
                         </span>
                       )}
                     </div>
@@ -535,10 +545,10 @@ export const DeviceTestPage: React.FC = () => {
           <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 space-y-3">
             <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
               <Camera className="w-4 h-4 text-brand-600" />
-              PDA 原生相机与 R2 私有存储验证
+              {t('cameraTitle')}
             </h2>
             <p className="text-xs text-slate-500 leading-relaxed">
-              测试浏览器唤起后置摄像头拍照能力，验证照片二进制数据能否直接上传至 Cloudflare R2 私有 Bucket。
+              {t('cameraInstruction')}
             </p>
 
             <div className="space-y-3 pt-1">
@@ -569,8 +579,8 @@ export const DeviceTestPage: React.FC = () => {
 
                   {selectedPhoto && (
                     <div className="flex items-center justify-between text-xs text-slate-600 bg-slate-50 p-2 rounded">
-                      <span>文件: {selectedPhoto.name}</span>
-                      <span>大小: {Math.round(selectedPhoto.size / 1024)} KB</span>
+                      <span>{t('fileLabel')} <bdi dir="ltr">{selectedPhoto.name}</bdi></span>
+                      <span>{t('sizeLabel')} {Math.round(selectedPhoto.size / 1024)} KB</span>
                     </div>
                   )}
 
@@ -582,7 +592,7 @@ export const DeviceTestPage: React.FC = () => {
                       className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50"
                     >
                       <UploadCloud className="w-4 h-4" />
-                      {uploadStatus === 'UPLOADING' ? '正在上传至 R2...' : '测试上传至 Cloudflare R2'}
+                      {uploadStatus === 'UPLOADING' ? t('uploadingR2') : t('uploadR2')}
                     </button>
                   </div>
                 </div>
@@ -593,7 +603,7 @@ export const DeviceTestPage: React.FC = () => {
                 <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 space-y-1">
                   <div className="font-bold flex items-center gap-1">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    云端已成功保存 (Cloudflare R2)
+                    {t('r2Saved')}
                   </div>
                   <div className="font-mono text-[11px] break-all">
                     Key: {uploadResultKey}
@@ -605,7 +615,7 @@ export const DeviceTestPage: React.FC = () => {
                 <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-800 space-y-1">
                   <div className="font-bold flex items-center gap-1">
                     <AlertTriangle className="w-4 h-4 text-rose-600" />
-                    R2 上传失败
+                    {t('r2Failed')}
                   </div>
                   <p>{cameraError}</p>
                 </div>
@@ -617,7 +627,7 @@ export const DeviceTestPage: React.FC = () => {
           <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700">
-                R2 测试对象列表 ({r2FileList.length})
+                {t('r2List')} ({r2FileList.length})
               </span>
               <button
                 type="button"
@@ -625,12 +635,12 @@ export const DeviceTestPage: React.FC = () => {
                 className="text-xs text-brand-600 hover:text-brand-800 flex items-center gap-1"
               >
                 <RotateCw className="w-3 h-3" />
-                刷新
+                {t('refresh')}
               </button>
             </div>
 
             {r2FileList.length === 0 ? (
-              <p className="text-xs text-slate-400 py-3 text-center">暂无测试照片或 R2 未配置</p>
+              <p className="text-xs text-slate-400 py-3 text-center">{t('noR2')}</p>
             ) : (
               <div className="space-y-1.5 max-h-40 overflow-y-auto">
                 {r2FileList.map((f) => (
@@ -659,19 +669,19 @@ export const DeviceTestPage: React.FC = () => {
           <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 space-y-3">
             <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
               <Database className="w-4 h-4 text-brand-600" />
-              Cloudflare D1 数据库读写验证
+              {t('d1Title')}
             </h2>
 
             {healthData && (
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-slate-500 block text-[10px]">D1 状态</span>
+                  <span className="text-slate-500 block text-[10px]">{t('d1Status')}</span>
                   <span className="font-semibold text-slate-800">
                     {healthData.bindings.d1.details}
                   </span>
                 </div>
                 <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-slate-500 block text-[10px]">R2 状态</span>
+                  <span className="text-slate-500 block text-[10px]">{t('r2Status')}</span>
                   <span className="font-semibold text-slate-800">
                     {healthData.bindings.r2.details}
                   </span>
@@ -682,21 +692,21 @@ export const DeviceTestPage: React.FC = () => {
             {/* Manual Write Test Form */}
             <div className="space-y-2 pt-1 border-t border-slate-100">
               <span className="text-xs font-semibold text-slate-700 block">
-                写入一条 D1 测试记录
+                {t('writeD1')}
               </span>
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="text"
                   value={d1TestKey}
                   onChange={(e) => setD1TestKey(e.target.value)}
-                  placeholder="测试 Key"
+                  placeholder={t('testKey')}
                   className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded"
                 />
                 <input
                   type="text"
                   value={d1TestVal}
                   onChange={(e) => setD1TestVal(e.target.value)}
-                  placeholder="测试 Value (如 库位 120-075-1)"
+                  placeholder={t('testValue')}
                   className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded"
                 />
               </div>
@@ -707,7 +717,7 @@ export const DeviceTestPage: React.FC = () => {
                 disabled={d1Loading}
                 className="w-full py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-medium rounded-lg disabled:opacity-50"
               >
-                {d1Loading ? '正在写入 D1...' : '写入并立即读回校验 (Read-After-Write)'}
+                {d1Loading ? t('writingD1') : t('writeAndRead')}
               </button>
 
               {d1Message && (
@@ -722,7 +732,7 @@ export const DeviceTestPage: React.FC = () => {
           <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700">
-                云端 D1 最新诊断记录 (多机验证)
+                {t('cloudD1')}
               </span>
               <button
                 type="button"
@@ -730,16 +740,16 @@ export const DeviceTestPage: React.FC = () => {
                 className="text-xs text-brand-600 hover:text-brand-800 flex items-center gap-1"
               >
                 <RotateCw className="w-3 h-3" />
-                刷新
+                {t('refresh')}
               </button>
             </div>
             <p className="text-[11px] text-slate-500">
-              可以在手机/PDA与电脑上同时打开本页面，在一端写入，在另一端点击刷新，验证云端数据一致性。
+              {t('multiDeviceInfo')}
             </p>
 
             <div className="space-y-1.5 max-h-56 overflow-y-auto">
               {diagnosticsList.length === 0 ? (
-                <p className="text-xs text-slate-400 py-3 text-center">暂无诊断记录</p>
+                <p className="text-xs text-slate-400 py-3 text-center">{t('noRecords')}</p>
               ) : (
                 diagnosticsList.map((d) => (
                   <div
@@ -765,10 +775,10 @@ export const DeviceTestPage: React.FC = () => {
           <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 space-y-3">
             <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
               <Wifi className="w-4 h-4 text-brand-600" />
-              网络中断保护与待同步队列 (IndexedDB 模式)
+              {t('offlineTitle')}
             </h2>
             <p className="text-xs text-slate-500 leading-relaxed">
-              现场 Wi-Fi 偶发中断时，数据不会静默丢弃。输入暂存入本地待同步队列，网络恢复后安全提交。
+              {t('offlineInfo')}
             </p>
 
             <div className="space-y-2 pt-1">
@@ -777,7 +787,7 @@ export const DeviceTestPage: React.FC = () => {
                   type="text"
                   value={d1TestVal}
                   onChange={(e) => setD1TestVal(e.target.value)}
-                  placeholder="输入拟核查数据 (模拟断网录入)"
+                  placeholder={t('offlinePlaceholder')}
                   className="flex-1 px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded"
                 />
                 <button
@@ -785,21 +795,21 @@ export const DeviceTestPage: React.FC = () => {
                   onClick={handleQueueOfflineItem}
                   className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-medium"
                 >
-                  暂存本地队列
+                  {t('queueLocally')}
                 </button>
               </div>
 
               {offlinePendingQueue.length > 0 && (
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
                   <div className="flex items-center justify-between text-xs text-amber-900 font-bold">
-                    <span>本地待同步记录 ({offlinePendingQueue.length})</span>
+                    <span>{t('localQueue')} ({offlinePendingQueue.length})</span>
                     <button
                       type="button"
                       onClick={handleSyncOfflineQueue}
                       disabled={d1Loading || !isOnline}
                       className="px-2.5 py-1 bg-amber-700 text-white rounded text-xs disabled:opacity-50"
                     >
-                      立即同步到云端
+                      {t('syncNow')}
                     </button>
                   </div>
 
@@ -820,27 +830,27 @@ export const DeviceTestPage: React.FC = () => {
           <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 space-y-2">
             <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
               <ShieldCheck className="w-4 h-4 text-brand-600" />
-              Cloudflare Access 身份鉴权验证
+              {t('accessTitle')}
             </h2>
             <div className="p-2.5 bg-slate-50 border border-slate-200 rounded text-xs space-y-1">
               <div className="flex justify-between">
-                <span className="text-slate-500">鉴权模式:</span>
-                <span className="font-mono font-bold text-slate-800">{authData?.mode || '未知'}</span>
+                <span className="text-slate-500">{t('authMode')}</span>
+                <span className="font-mono font-bold text-slate-800">{authData?.mode || t('authUnknown')}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">认证通过状态:</span>
+                <span className="text-slate-500">{t('authentication')}</span>
                 <span className={`font-bold ${authData?.authenticated ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  {authData?.authenticated ? '已通过认证' : '未授权 / 待接入 Access'}
+                  {authData?.authenticated ? t('authYes') : t('authNo')}
                 </span>
               </div>
               {authData?.user ? (
                 <div className="pt-1 text-[11px] text-slate-600 border-t border-slate-200 mt-1">
-                  用户: {JSON.stringify(authData.user)}
+                  {t('networkUser')} <span dir="ltr">{JSON.stringify(authData.user)}</span>
                 </div>
               ) : null}
               {authData?.error && (
                 <p className="text-[11px] text-amber-700 pt-1">
-                  提示: {authData.error}
+                  {t('networkHint')} {authData.error}
                 </p>
               )}
             </div>
