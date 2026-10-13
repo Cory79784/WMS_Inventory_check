@@ -284,7 +284,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   // Vertical navigation changes only the first numeric segment.
   const verticalLocation = (offset: -1 | 1): string | null => {
     if (!locData) return null;
-    const match = /^(\\d+)-(\\d+)-(\\d+)$/.exec(locData.locationCode);
+    const match = /^(\d+)-(\d+)-(\d+)$/.exec(locData.locationCode);
     if (!match) return null;
     const first = Number(match[1]) + offset;
     if (!Number.isSafeInteger(first) || first < 1 || String(first).length > match[1].length) return null;
