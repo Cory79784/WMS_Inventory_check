@@ -451,7 +451,7 @@ describe('PDA inspection UI interactions', () => {
       expect(api.saveLocationInspection).not.toHaveBeenCalled();
       await act(async () => finish({ photoId: 'capture-1', objectKey: 'inspections/H1/capture.jpg', previewUrl: '/private-r2' }));
       expect(container.querySelector('img[src="blob:original-unmodified"]')).toBeTruthy();
-      expect(container.textContent).toContain('照片已上传');
+      expect(container.textContent).toContain('核查记录正在自动保存');
       expect(api.uploadInspectionPhoto.mock.calls[0][0]).toBe(file);
       await click(button('正常'));
       await click(button('保存本库位核查'));
