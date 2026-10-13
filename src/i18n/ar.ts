@@ -258,4 +258,7 @@ export const ar: Record<TranslationKey, string> = {
   archPending2: "قواعد ترميز المواقع وحدود الممرات في القاعات الثلاث",
   archPending3: "قراءة نموذج WMS Excel ومطابقة الأعمدة الثمانية عشر",
   archPending4: "حدود الممرات وقواعد عرض السجل التاريخي",
+  footerTitle: "نظام جرد المخزون PDA",
+  currentHallLabel: "قاعة العمل الحالية:",
+  siteTitle: "جرد مخزون المستودع PDA",
 };
