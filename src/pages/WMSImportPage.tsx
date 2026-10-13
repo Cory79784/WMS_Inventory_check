@@ -593,13 +593,13 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-400 text-[11px]">
-                  <th className="py-2 px-2">版本</th>
-                  <th className="py-2 px-2">原始文件名</th>
+                  <th className="py-2 px-2">{t('version')}</th>
+                  <th className="py-2 px-2">{t('filename')}</th>
                   <th className="py-2 px-2">{t('dataImported')}</th>
                   <th className="py-2 px-2">账面库位</th>
                   <th className="py-2 px-2">SKU 数</th>
                   <th className="py-2 px-2">{t('totalQuantity')}</th>
-                  <th className="py-2 px-2">状态</th>
+                  <th className="py-2 px-2">{t('status')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
