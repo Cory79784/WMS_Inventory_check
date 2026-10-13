@@ -747,7 +747,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
         {/* First-segment vertical navigation; other segments remain unchanged. */}
         {locData && /^\d+-\d+-\d+$/.test(locData.locationCode) && (
           <div className="flex items-center justify-center gap-3 mt-2 text-xs">
-            <button type="button" aria-label="上一排库位" onPointerDown={keepScannerFocus}
+            <button type="button" aria-label={t('rowUp')} onPointerDown={keepScannerFocus}
               disabled={loading || saving || photoBusy || !verticalLocation(-1)}
               onClick={() => { const code = verticalLocation(-1); if (code) handleQueryLocation(code); }}
               className="flex items-center gap-1 px-3 py-1 rounded bg-slate-100 disabled:opacity-30">
@@ -963,7 +963,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                   {/* Stock Quantities Grid (6 Pillars) */}
                   <div className="grid grid-cols-6 gap-1 mt-2.5 pt-2 border-t border-slate-100 text-center">
                     <div className="bg-slate-50 rounded p-1">
-                      <div className="text-[10px] text-slate-400">账面</div>
+                      <div className="text-[10px] text-slate-400">{t('book')}</div>
                       <div className="text-sm font-bold text-slate-800 font-mono">{item.systemQty}</div>
                     </div>
                     <div className="bg-slate-50 rounded p-1">
@@ -979,7 +979,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                       <div className="text-xs font-semibold text-slate-700 font-mono">{item.frozenQty}</div>
                     </div>
                     <div className={`rounded p-1 ${item.actualQty !== null ? 'bg-blue-50 text-blue-900' : 'bg-slate-50 text-slate-400'}`}>
-                      <div className="text-[10px] font-medium">实盘</div>
+                      <div className="text-[10px] font-medium">{t('actual')}</div>
                       <div className="text-sm font-bold font-mono">
                         {item.actualQty !== null ? item.actualQty : '-'}
                       </div>
@@ -1143,8 +1143,8 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
             <div className="bg-slate-50 p-2.5 rounded-lg text-xs space-y-1">
               <div><strong>SKU:</strong> <span className="font-mono">{shortageModalSku.sku}</span></div>
-              <div><strong>品名:</strong> {shortageModalSku.nameZh}</div>
-              <div><strong>账面库存:</strong> <span className="font-bold text-slate-800 font-mono text-sm">{shortageModalSku.systemQty}</span> 件</div>
+              <div><strong>{t('productName')}</strong> {shortageModalSku.nameZh}</div>
+              <div><strong>{t('bookQty')}</strong> <span className="font-bold text-slate-800 font-mono text-sm">{shortageModalSku.systemQty}</span>{t('pieces')}</div>
             </div>
 
             <div>
@@ -1253,11 +1253,11 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                   {...{ virtualkeyboardpolicy: !manualInput && virtualKeyboard ? 'manual' : 'auto' }}
                   value={surplusSkuInput}
                   onChange={(e) => setSurplusSkuInput(e.target.value.toUpperCase())}
-                  placeholder="扫描或输入外箱 SKU"
+                  placeholder={t('skuPlaceholder')}
                   className="w-full font-mono font-bold text-sm border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
                 />
-                <button type="button" aria-label="手动输入" onClick={(event) => {
+                <button type="button" aria-label={t('manual')} onClick={(event) => {
                   const input = event.currentTarget.previousElementSibling as HTMLInputElement;
                   setManualInput(!manualInput);
                   if (manualInput) input.blur();
@@ -1279,11 +1279,11 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                   {...{ virtualkeyboardpolicy: !manualInput && virtualKeyboard ? 'manual' : 'auto' }}
                   value={surplusBarcodeInput}
                   onChange={(e) => setSurplusBarcodeInput(e.target.value.trim())}
-                  placeholder="扫描外箱 Barcode / eBarcode"
+                  placeholder={t('barcodePlaceholder')}
                   className="w-full font-mono font-bold text-sm border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
                 />
-                <button type="button" aria-label="手动输入" onClick={(event) => {
+                <button type="button" aria-label={t('manual')} onClick={(event) => {
                   const input = event.currentTarget.previousElementSibling as HTMLInputElement;
                   setManualInput(!manualInput);
                   if (manualInput) input.blur();
@@ -1295,7 +1295,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             {/* Field: No SKU rule notice */}
             {surplusMode === 'NO_SKU' && (
               <div className="bg-amber-50 border border-amber-200 p-2 rounded-lg text-xs text-amber-800">
-                <strong>⚠️ 规则强制要求：</strong> 无 SKU 或未知白牌货物，必须拍摄商品及外包装清晰照片存证！
+                <strong>{t('mandatory')}</strong> 无 SKU 或未知白牌货物，必须拍摄商品及外包装清晰照片存证！
               </div>
             )}
 
@@ -1309,7 +1309,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 min="1"
                 value={surplusQtyInput}
                 onChange={(e) => setSurplusQtyInput(e.target.value)}
-                placeholder="数量"
+                placeholder={t('qtyPlaceholder')}
                 className="w-full text-center text-xl font-bold font-mono border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
               />
             </div>
@@ -1322,7 +1322,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 {surplusMode === 'NO_SKU' ? (
-                  <span className="text-red-600 font-bold">* 拍照存证 (必填)</span>
+                  <span className="text-red-600 font-bold">{t('photoRequired')}</span>
                 ) : (
                   '现场拍照 (可选)'
                 )}
@@ -1367,7 +1367,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 type="text"
                 value={surplusNotesInput}
                 onChange={(e) => setSurplusNotesInput(e.target.value)}
-                placeholder="例如: 黄色胶带封口，无外箱标"
+                placeholder={t('notesExample')}
                 className="w-full text-xs border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
               />
             </div>
