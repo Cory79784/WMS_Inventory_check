@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import React, { useState, useEffect, useRef } from 'react';
 import { registerLanguageSafety } from '../i18n/safety';
 import {
@@ -747,7 +748,7 @@ export const DeviceTestPage: React.FC = () => {
 
             <div className="space-y-1.5 max-h-56 overflow-y-auto">
               {diagnosticsList.length === 0 ? (
-                <p className="text-xs text-slate-400 py-3 text-center">暂无诊断记录</p>
+                <p className="text-xs text-slate-400 py-3 text-center">{t('noRecords')}</p>
               ) : (
                 diagnosticsList.map((d) => (
                   <div
@@ -836,7 +837,7 @@ export const DeviceTestPage: React.FC = () => {
                 <span className="font-mono font-bold text-slate-800">{authData?.mode || '未知'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">认证通过状态:</span>
+                <span className="text-slate-500">{t('authentication')}</span>
                 <span className={`font-bold ${authData?.authenticated ? 'text-emerald-600' : 'text-rose-600'}`}>
                   {authData?.authenticated ? '已通过认证' : '未授权 / 待接入 Access'}
                 </span>
