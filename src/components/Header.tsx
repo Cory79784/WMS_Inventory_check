@@ -19,7 +19,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   return (
     <header className="sticky top-0 z-50 bg-slate-900 text-white shadow-md">
-      <div className="max-w-3xl mx-auto px-3 py-2 flex items-center justify-between">
+      <div className="max-w-3xl mx-auto px-3 py-2 flex flex-wrap items-center justify-between gap-1">
         <div className="flex items-center gap-2">
           <Warehouse className="w-5 h-5 text-blue-400" />
           <span className="font-bold text-sm tracking-tight">{t('warehouse')}</span>
