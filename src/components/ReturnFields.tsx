@@ -25,7 +25,7 @@ export const ReturnFields: React.FC<{
       </label>
       {isReturn && (
         <div className="flex items-center gap-2">
-          <input ref={inputRef} type="text" aria-label={t("returnCode")}
+          <input ref={inputRef} type="text" dir="ltr" aria-label={t("returnCode")}
             value={returnCode} onChange={event => onCodeChange(event.target.value)}
             inputMode={manual ? 'text' : /Android/i.test(navigator.userAgent) ? undefined : 'none'}
             {...{ virtualkeyboardpolicy: !manual && scannerKeyboard() ? 'manual' : 'auto' }}
