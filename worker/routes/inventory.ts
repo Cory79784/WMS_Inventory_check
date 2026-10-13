@@ -707,6 +707,7 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
         isEmptyConfirmed?: boolean;
         status?: 'VERIFIED' | 'IN_PROGRESS' | 'PENDING_REVIEW' | 'CLOSED';
         notes?: string;
+        reset?: boolean;
         skus: Array<{
           sku?: string;
           barcode?: string;
@@ -750,6 +751,16 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
         `SELECT inspection_id FROM location_inspections WHERE hall_id = ? AND reference_import_id = ? AND location_code = ?`
       ).bind(body.hallId, importId, body.locationCode).first<{ inspection_id: string }>();
 
+      // Preserve reset evidence in D1 without deleting any R2 originals.
+      let previousEvidence: string | null = null;
+      if (body.reset && existing?.inspection_id) {
+        const [previous, previousSkus, previousPhotos] = await Promise.all([
+          env.DB.prepare('SELECT * FROM location_inspections WHERE inspection_id = ?').bind(existing.inspection_id).first(),
+          env.DB.prepare('SELECT * FROM sku_inspections WHERE inspection_id = ?').bind(existing.inspection_id).all(),
+          env.DB.prepare('SELECT * FROM inspection_photos WHERE inspection_id = ?').bind(existing.inspection_id).all(),
+        ]);
+        previousEvidence = JSON.stringify({inspection: previous, skus: previousSkus.results, photos: previousPhotos.results});
+      }
       const inspectionId = existing?.inspection_id || `insp_${body.hallId}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
       const status = body.status || 'VERIFIED';
 
@@ -781,6 +792,12 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
         // 2. Clear previous sku_inspections for clean replace
         env.DB.prepare(`DELETE FROM sku_inspections WHERE inspection_id = ?`).bind(inspectionId),
       ];
+
+      if (previousEvidence) stmts.push(
+        env.DB.prepare('INSERT INTO inspection_reset_history (id, inspection_id, changed_at, previous_json) VALUES (?, ?, ?, ?)')
+          .bind(crypto.randomUUID(), inspectionId, nowUtc, previousEvidence)
+      );
+      if (body.reset) stmts.push(env.DB.prepare('DELETE FROM inspection_photos WHERE inspection_id = ?').bind(inspectionId));
 
       // 3. Insert new sku_inspections
       for (const item of body.skus || []) {
