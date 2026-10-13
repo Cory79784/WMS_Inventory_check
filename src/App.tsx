@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { registerLanguageSafety } from './i18n/safety';
+import { readLanguage } from './i18n';
 import { Header } from './components/Header';
 import { LocationInspectionPage, hasUnsavedInspectionDrafts } from './pages/LocationInspectionPage';
 import { DeviceTestPage } from './pages/DeviceTestPage';
@@ -9,10 +10,14 @@ import { InspectionExportPage } from './pages/InspectionExportPage';
 import { HallId } from './types';
 
 export const App: React.FC = () => {
-  useEffect(() => registerLanguageSafety('cached-inspection-drafts', {
-    dirty: hasUnsavedInspectionDrafts,
-    busy: () => false,
-  }), []);
+  useEffect(() => {
+    document.documentElement.lang = readLanguage();
+    document.documentElement.dir = 'ltr'; // Never mirror PDA controls.
+    return registerLanguageSafety('cached-inspection-drafts', {
+      dirty: hasUnsavedInspectionDrafts,
+      busy: () => false,
+    });
+  }, []);
   const [currentHall, setCurrentHall] = useState<HallId>('H1');
   const [activeView, setActiveView] = useState<'inspect' | 'test' | 'import' | 'export' | 'arch'>('inspect');
 
