@@ -181,4 +181,5 @@ export const ar: Record<TranslationKey, string> = {
   d1Success: "✅ تمت كتابة D1: ID",
   d1Failure: "❌ فشلت الكتابة:",
   syncFailure: "فشلت المزامنة:",
+  photoUploading: "جارٍ الرفع",
 };
