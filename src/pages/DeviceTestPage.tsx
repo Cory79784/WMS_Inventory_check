@@ -248,7 +248,7 @@ export const DeviceTestPage: React.FC = () => {
   // Handle D1 test write
   const handleD1Write = async () => {
     if (!d1TestKey || !d1TestVal) {
-      setD1Message('请输入测试 Key 和 Value');
+      setD1Message(t('inputKey'));
       return;
     }
     setD1Loading(true);
@@ -260,12 +260,12 @@ export const DeviceTestPage: React.FC = () => {
         d1TestVal,
         `Device: ${isAndroid ? 'Android PDA' : 'Desktop Browser'} - UA: ${userAgent.substring(0, 40)}`
       );
-      setD1Message(`✅ D1 写入成功: ID ${res.record.id}`);
+      setD1Message(`${t('d1Success')} ${res.record.id}`);
       setD1TestVal('');
       loadDiagnostics();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setD1Message(`❌ 写入失败: ${msg}`);
+      setD1Message(`${t('d1Failure')} ${msg}`);
     } finally {
       setD1Loading(false);
     }
@@ -295,7 +295,7 @@ export const DeviceTestPage: React.FC = () => {
       loadDiagnostics();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setD1Message(`同步失败: ${msg}`);
+      setD1Message(`${t('syncFailure')} ${msg}`);
     } finally {
       setD1Loading(false);
     }
@@ -313,7 +313,7 @@ export const DeviceTestPage: React.FC = () => {
                 Phase 0: PDA 设备与技术可行性验证
               </h1>
               <p className="text-xs text-slate-500">
-                {isAndroid ? '检测到安卓移动设备 (Android PDA 环境)' : '桌面端开发测试环境'}
+                {isAndroid ? t('androidFound') : t('desktopFound')}
               </p>
             </div>
           </div>
@@ -321,7 +321,7 @@ export const DeviceTestPage: React.FC = () => {
             {isOnline ? (
               <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-medium border border-emerald-200">
                 <Wifi className="w-3.5 h-3.5" />
-                {pingLatency !== null ? `${pingLatency}ms` : '在线'}
+                {pingLatency !== null ? `${pingLatency}ms` : t('online')}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 font-medium border border-rose-200">
@@ -418,7 +418,7 @@ export const DeviceTestPage: React.FC = () => {
                 value={scanInputValue}
                 onChange={(e) => setScanInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="点击此处或直接按 PDA 侧键扫码..."
+                placeholder={t('scanTap')}
                 className="w-full px-3 py-2.5 bg-slate-50 border-2 border-brand-500 rounded-lg text-slate-900 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                 autoComplete="off"
                 autoCorrect="off"
@@ -427,7 +427,7 @@ export const DeviceTestPage: React.FC = () => {
               />
 
               <div className="flex flex-wrap gap-1.5 pt-1">
-                <span className="text-xs text-slate-400 self-center mr-1">电脑端模拟:</span>
+                <span className="text-xs text-slate-400 self-center mr-1">{t('computerSim')}</span>
                 <button
                   type="button"
                   onClick={() => simulateScan('120-075-1')}
@@ -499,10 +499,10 @@ export const DeviceTestPage: React.FC = () => {
                         }`}
                       >
                         {evt.likelyType === 'LOCATION'
-                          ? '物理库位格式'
+                          ? t('locationFormat')
                           : evt.likelyType === 'SKU_OR_BARCODE'
-                          ? '商品/条码格式'
-                          : '通用格式'}
+                          ? t('productFormat')
+                          : t('generalFormat')}
                       </span>
 
                       <span
@@ -512,7 +512,7 @@ export const DeviceTestPage: React.FC = () => {
                             : 'bg-amber-100 text-amber-800'
                         }`}
                       >
-                        {evt.inputMethod === 'keyboard-wedge' ? '硬件扫描头 Wedge' : '人工慢速键盘'}
+                        {evt.inputMethod === 'keyboard-wedge' ? t('wedgeHardware') : t('slowKeyboard')}
                       </span>
 
                       <span className="text-slate-500">
@@ -591,7 +591,7 @@ export const DeviceTestPage: React.FC = () => {
                       className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50"
                     >
                       <UploadCloud className="w-4 h-4" />
-                      {uploadStatus === 'UPLOADING' ? '正在上传至 R2...' : '测试上传至 Cloudflare R2'}
+                      {uploadStatus === 'UPLOADING' ? t('uploadingR2') : t('uploadR2')}
                     </button>
                   </div>
                 </div>
@@ -639,7 +639,7 @@ export const DeviceTestPage: React.FC = () => {
             </div>
 
             {r2FileList.length === 0 ? (
-              <p className="text-xs text-slate-400 py-3 text-center">暂无测试照片或 R2 未配置</p>
+              <p className="text-xs text-slate-400 py-3 text-center">{t('noR2')}</p>
             ) : (
               <div className="space-y-1.5 max-h-40 overflow-y-auto">
                 {r2FileList.map((f) => (
@@ -698,14 +698,14 @@ export const DeviceTestPage: React.FC = () => {
                   type="text"
                   value={d1TestKey}
                   onChange={(e) => setD1TestKey(e.target.value)}
-                  placeholder="测试 Key"
+                  placeholder={t('testKey')}
                   className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded"
                 />
                 <input
                   type="text"
                   value={d1TestVal}
                   onChange={(e) => setD1TestVal(e.target.value)}
-                  placeholder="测试 Value (如 库位 120-075-1)"
+                  placeholder={t('testValue')}
                   className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded"
                 />
               </div>
@@ -716,7 +716,7 @@ export const DeviceTestPage: React.FC = () => {
                 disabled={d1Loading}
                 className="w-full py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-medium rounded-lg disabled:opacity-50"
               >
-                {d1Loading ? '正在写入 D1...' : '写入并立即读回校验 (Read-After-Write)'}
+                {d1Loading ? t('writingD1') : t('writeAndRead')}
               </button>
 
               {d1Message && (
@@ -786,7 +786,7 @@ export const DeviceTestPage: React.FC = () => {
                   type="text"
                   value={d1TestVal}
                   onChange={(e) => setD1TestVal(e.target.value)}
-                  placeholder="输入拟核查数据 (模拟断网录入)"
+                  placeholder={t('offlinePlaceholder')}
                   className="flex-1 px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded"
                 />
                 <button
@@ -834,12 +834,12 @@ export const DeviceTestPage: React.FC = () => {
             <div className="p-2.5 bg-slate-50 border border-slate-200 rounded text-xs space-y-1">
               <div className="flex justify-between">
                 <span className="text-slate-500">{t('authMode')}</span>
-                <span className="font-mono font-bold text-slate-800">{authData?.mode || '未知'}</span>
+                <span className="font-mono font-bold text-slate-800">{authData?.mode || t('authUnknown')}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">{t('authentication')}</span>
                 <span className={`font-bold ${authData?.authenticated ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  {authData?.authenticated ? '已通过认证' : '未授权 / 待接入 Access'}
+                  {authData?.authenticated ? t('authYes') : t('authNo')}
                 </span>
               </div>
               {authData?.user ? (
