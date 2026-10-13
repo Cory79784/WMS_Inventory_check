@@ -207,7 +207,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     const loc = targetLoc.trim();
     if (!loc) return;
     if (saving || photoBusy || uploadsInFlight.current || uploadingSurplusPhoto) {
-      setErrorMsg('保存或上传中，请稍后重新扫码');
+      setErrorMsg(t('scanBusy'));
       return;
     }
     const id = ++requestId.current;
@@ -358,7 +358,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   // Confirm Empty Location
   const handleConfirmEmpty = async () => {
     if (saving || loading || photoBusy || photoFailed || uploadingSurplusPhoto) return;
-    if (skuList.length && !confirm('确认此库位为空？已记录的商品将清除并保存。')) return;
+    if (skuList.length && !confirm(t('emptyWarning'))) return;
     await handleSaveInspection([], true);
   };
 
@@ -375,7 +375,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     if (!shortageModalSku) return;
     const shortageCount = parseInt(shortageCountInput || '0', 10);
     if (isNaN(shortageCount) || shortageCount <= 0) {
-      alert('请输入有效的少货数量（大于 0）');
+      alert(t('invalidShortage'));
       return;
     }
 
@@ -423,23 +423,23 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   const handleSubmitSurplus = async () => {
     const qty = parseInt(surplusQtyInput || '0', 10);
     if (isNaN(qty) || qty <= 0) {
-      alert('请输入有效的多货数量（大于 0）');
+      alert(t('invalidSurplus'));
       return;
     }
 
     if (surplusMode === 'SKU' && !surplusSkuInput.trim()) {
-      alert('请输入或扫描多货商品的 SKU 编码！');
+      alert(t('missingSku'));
       return;
     }
 
     if (surplusMode === 'BARCODE' && !surplusBarcodeInput.trim()) {
-      alert('请输入或扫描多货商品的 Barcode / eBarcode 条码！');
+      alert(t('missingBarcode'));
       return;
     }
 
     if (surplusMode === 'NO_SKU') {
       if (!surplusPhotoFile) {
-        alert('【规则强制要求】：无 SKU / 未知商品多货必须现场拍照存证！');
+        alert(t('noSkuPhotoWarning'));
         return;
       }
     }
@@ -633,7 +633,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       setLocationNotes(notes);
       setIsEmptyConfirmed(empty);
       setUploads([]);
-      setSaveSuccessMsg(incomplete ? '已暂存' : '已保存');
+      setSaveSuccessMsg(incomplete ? t('draftSaved') : t('saved'));
       triggerHaptic(true);
       // IME-based PDA scanners need an editable target after the save button took focus.
       if (androidScanner) focusScanner();
@@ -652,16 +652,16 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       {/* Top Banner: Hall & Active Version Status */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-2.5 flex items-center justify-between text-xs">
         <div className="flex items-center gap-2">
-          <span className="font-bold text-slate-800 text-sm">{currentHall} 盘点厅</span>
+          <span className="font-bold text-slate-800 text-sm">{currentHall} {t('hall')}</span>
           {activeVersionInfo ? (
             <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-mono border border-blue-200">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></span>
-              V{activeVersionInfo.version_number} ({activeVersionInfo.source_exported_at ? activeVersionInfo.source_exported_at.split('T')[0] : '生效中'})
+              V{activeVersionInfo.version_number} ({activeVersionInfo.source_exported_at ? activeVersionInfo.source_exported_at.split('T')[0] : t('active')})
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-200">
               <AlertTriangle className="w-3 h-3 text-amber-600" />
-              未发布 WMS 快照
+              {t('noWms')}
             </span>
           )}
         </div>
@@ -673,7 +673,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
               onClick={onOpenImport}
               className="bg-blue-600 text-white font-medium px-2 py-1 rounded hover:bg-blue-700 transition"
             >
-              PC 上传 Excel
+              {t('pcImport')}
             </button>
           )}
           <button
@@ -681,7 +681,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             onClick={onOpenTest}
             className="text-slate-500 hover:text-slate-700 px-2 py-1 rounded border border-slate-200 hover:bg-slate-50 transition"
           >
-            硬件测试
+            {t('hardware')}
           </button>
         </div>
       </div>
@@ -722,7 +722,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
           <button
             type="button"
-            aria-label={manualInput ? '返回扫码模式' : '手动输入库位'}
+            aria-label={manualInput ? t('scannerMode') : t('manualLocation')}
             aria-pressed={manualInput}
             onClick={() => {
               setManualInput(!manualInput);
@@ -740,7 +740,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             disabled={loading || saving || photoBusy || !inputLoc.trim()}
             className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold px-4 py-2.5 rounded-lg flex items-center gap-1 shadow-sm transition active:scale-95"
           >
-            {loading ? <RotateCw className="w-4 h-4 animate-spin" /> : '查询'}
+            {loading ? <RotateCw className="w-4 h-4 animate-spin" /> : t('query')}
           </button>
         </div>
 
@@ -840,7 +840,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
             {locData.lastInspection && (
               <p className="mt-2 text-xs text-slate-500">
-                {locData.lastInspection.versionNumber === locData.versionNumber ? '已核查' : '上次已核查'}：
+                {locData.lastInspection.versionNumber === locData.versionNumber ? t('inspected') : t('previouslyInspected')}：
                 {new Date(locData.lastInspection.completedAt).toLocaleString('zh-CN', { hour12: false })}
                 {locData.lastInspection.versionNumber !== locData.versionNumber && `（V${locData.lastInspection.versionNumber}，当前 V${locData.versionNumber} 待核查）`}
               </p>
@@ -864,7 +864,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                       : 'bg-white border border-amber-300 text-amber-900 hover:bg-amber-100'
                   }`}
                 >
-                  {isEmptyConfirmed ? '✓ 已确认空库位' : '确认为空库位'}
+                  {isEmptyConfirmed ? t('emptyConfirmed') : t('emptyConfirm')}
                 </button>
               </div>
             )}
@@ -883,7 +883,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 border border-blue-200 active:scale-95 transition"
               >
                 <PlusCircle className="w-3.5 h-3.5" />
-                + 现场多货
+                {t('surplusAdd')}
               </button>
             </div>
 
@@ -915,17 +915,17 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                         </span>
                         {item.customerCode && (
                           <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded border border-slate-200">
-                            客:{item.customerCode}
+                            {t('customer')}{item.customerCode}
                           </span>
                         )}
                         {item.barcode && (
                           <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded border border-blue-200 font-mono">
-                            条码:{item.barcode}
+                            {t('barcodeLabel')}{item.barcode}
                           </span>
                         )}
                       </div>
                       <p className="text-xs text-slate-600 mt-0.5 line-clamp-1">
-                        {item.nameZh || '无中文品名'}
+                        {item.nameZh || t('noChineseName')}
                       </p>
                     </div>
 
@@ -933,12 +933,12 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                     <div>
                       {isNormal && (
                         <span className="inline-flex items-center gap-0.5 bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
-                          <Check className="w-3 h-3" /> 相符
+                          <Check className="w-3 h-3" /> {t('match')}
                         </span>
                       )}
                       {isShortage && (
                         <span className="inline-flex items-center gap-0.5 bg-red-100 text-red-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
-                          少货 {Math.abs(item.differenceQty || 0)}
+                          {t('shortage')} {Math.abs(item.differenceQty || 0)}
                         </span>
                       )}
                       {isSurplus && (
@@ -948,7 +948,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                       )}
                       {!item.discrepancyType && (
                         <span className="bg-slate-100 text-slate-500 text-[11px] px-2 py-0.5 rounded-full font-medium">
-                          待核对
+                          {t('unchecked')}
                         </span>
                       )}
                     </div>
@@ -956,7 +956,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
                   {item.isReturn && (
                     <p className="mt-2 text-xs text-slate-600 break-all">
-                      退货{item.returnCode ? ` · 退货码或跟踪号：${item.returnCode}` : ''}
+                      {t('returnShort')}{item.returnCode ? ` · 退货码或跟踪号：${item.returnCode}` : ''}
                     </p>
                   )}
 
@@ -1008,7 +1008,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                       className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 active:scale-95 transition"
                     >
                       <Check className="w-3.5 h-3.5" />
-                      正常
+                      {t('normal')}
                     </button>
 
                     <button
@@ -1017,7 +1017,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                       className="bg-slate-100 hover:bg-red-50 hover:text-red-700 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 border border-slate-200 active:scale-95 transition"
                     >
                       <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
-                      少货
+                      {t('shortage')}
                     </button>
                   </div>
                 </div>
@@ -1039,7 +1039,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 onClick={() => fileInputRef.current?.click()}
                 className="text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 px-2.5 py-1 rounded font-medium flex items-center gap-1"
               >
-                + 拍照 / 上传
+                {t('photoAdd')}
               </button>
               <input
                 ref={fileInputRef}
@@ -1056,12 +1056,12 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             </div>
 
             <label className="block text-xs text-slate-600">
-              照片关联
+              {t('photoAssign')}
               <select aria-label={t("photoTarget")} value={photoTargetSku} onChange={event => setPhotoTargetSku(event.target.value)}
                 className="ml-2 border border-slate-300 rounded px-2 py-1 bg-white max-w-full">
                 <option value="">{t('wholeLocation')}</option>
                 {skuList.map((item, index) => (
-                  <option key={index} value={item.sku}>{item.sku || '无 SKU 货物'} · {item.discrepancyType || '待核对'}</option>
+                  <option key={index} value={item.sku}>{item.sku || t('noSku')} · {item.discrepancyType || t('unchecked')}</option>
                 ))}
               </select>
             </label>
@@ -1071,7 +1071,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                   <span className="truncate">{upload.file.name}</span>
                   {upload.status === 'error' ? (
                     <button type="button" disabled={photoBusy || saving} onClick={() => uploadPhoto(upload)} className="text-blue-600 shrink-0">{t('retry')}</button>
-                  ) : <span className="shrink-0">{upload.status === 'saved' ? '已保存' : `上传中 ${upload.progress}%${upload.progress === 100 ? '（等待保存）' : ''}`}</span>}
+                  ) : <span className="shrink-0">{upload.status === 'saved' ? t('saved') : `上传中 ${upload.progress}%${upload.progress === 100 ? '（等待保存）' : ''}`}</span>}
                 </div>
                 {upload.status === 'uploading' && <progress aria-label="照片上传进度" max={100} value={upload.progress} className="w-full h-2" />}
               </div>
@@ -1086,7 +1086,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                       alt="Inspection"
                       className="w-16 h-16 object-cover rounded-lg border border-slate-200"
                     />
-                    <span className="block text-[10px] truncate max-w-20">{p.sku || '库位照片'}</span>
+                    <span className="block text-[10px] truncate max-w-20">{p.sku || t('locationPhoto')}</span>
                   </div>
                 ))}
               </div>
@@ -1096,11 +1096,11 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       )}
 
       <p className="text-xs text-slate-500 px-1" data-testid="wms-import-time">
-        WMS 库存依据：{locData ? `V${locData.versionNumber}` : activeVersionInfo ? `V${activeVersionInfo.version_number}` : '未发布'}
-        {' · 上传时间：'}
+        {t('wmsReference')}{locData ? `V${locData.versionNumber}` : activeVersionInfo ? `V${activeVersionInfo.version_number}` : '未发布'}
+        {' · ' + t('uploadedAt')}
         {(locData ? locData.importedAt : activeVersionInfo?.imported_at)
           ? new Date((locData ? locData.importedAt : activeVersionInfo?.imported_at)!).toLocaleString('zh-CN', { hour12: false })
-          : '暂无上传时间'}
+          : t('noUploadTime')}
       </p>
 
       {/* Floating Bottom Bar: Sticky Operation Controls */}
@@ -1115,7 +1115,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
               className="flex-1 bg-slate-800 hover:bg-slate-900 text-white font-semibold py-3 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition text-sm disabled:opacity-50"
             >
               {saving ? <RotateCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              保存本库位核查
+              {t('saveLocation')}
             </button>
 
 
@@ -1130,7 +1130,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <h3 className="font-bold text-slate-900 text-base flex items-center gap-1.5">
                 <AlertTriangle className="w-5 h-5 text-red-500" />
-                上报少货数量
+                {t('reportShortage')}
               </h3>
               <button
                 type="button"
@@ -1149,7 +1149,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                缺少件数 (少多少件)
+                {t('shortageQuantity')}
               </label>
               <input
                 type="number"
@@ -1176,14 +1176,14 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 onClick={() => setShortageModalSku(null)}
                 className="flex-1 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-medium"
               >
-                取消
+                {t('cancel')}
               </button>
               <button
                 type="button"
                 onClick={handleSubmitShortage}
                 className="flex-1 py-2 rounded-lg bg-red-600 text-white text-xs font-bold shadow-md hover:bg-red-700"
               >
-                确认少货
+                {t('confirmShortage')}
               </button>
             </div>
           </div>
@@ -1197,7 +1197,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <h3 className="font-bold text-slate-900 text-base flex items-center gap-1.5">
                 <PlusCircle className="w-5 h-5 text-amber-500" />
-                添加现场多货
+                {t('addSurplusTitle')}
               </h3>
               <button
                 type="button"
@@ -1218,7 +1218,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                   surplusMode === 'SKU' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
                 }`}
               >
-                扫/输 SKU
+                {t('scanSku')}
               </button>
               <button
                 type="button"
@@ -1227,7 +1227,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                   surplusMode === 'BARCODE' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
                 }`}
               >
-                扫/输 条码
+                {t('scanBarcode')}
               </button>
               <button
                 type="button"
@@ -1236,7 +1236,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                   surplusMode === 'NO_SKU' ? 'bg-amber-600 text-white shadow-sm' : 'text-slate-500'
                 }`}
               >
-                无 SKU 货物
+                {t('noSku')}
               </button>
             </div>
 
@@ -1244,7 +1244,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             {surplusMode === 'SKU' && (
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  SKU 编码 (扫码或录入)
+                  {t('skuInputLabel')}
                 </label>
                 <input
                   ref={surplusSkuRef}
@@ -1270,7 +1270,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             {surplusMode === 'BARCODE' && (
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Barcode / eBarcode 条码 (扫码或录入)
+                  {t('barcodeInputLabel')}
                 </label>
                 <input
                   ref={surplusBarcodeRef}
@@ -1295,14 +1295,14 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             {/* Field: No SKU rule notice */}
             {surplusMode === 'NO_SKU' && (
               <div className="bg-amber-50 border border-amber-200 p-2 rounded-lg text-xs text-amber-800">
-                <strong>{t('mandatory')}</strong> 无 SKU 或未知白牌货物，必须拍摄商品及外包装清晰照片存证！
+                <strong>{t('mandatory')}</strong> {t('noSkuExplanation')}
               </div>
             )}
 
             {/* Field: Quantity */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                多出件数 (数量)
+                {t('surplusQty')}
               </label>
               <input
                 type="number"
@@ -1324,7 +1324,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 {surplusMode === 'NO_SKU' ? (
                   <span className="text-red-600 font-bold">{t('photoRequired')}</span>
                 ) : (
-                  '现场拍照 (可选)'
+                  t('photoOptional')
                 )}
               </label>
               <input
@@ -1347,7 +1347,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                   className="bg-slate-100 hover:bg-slate-200 text-slate-800 px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 border border-slate-200"
                 >
                   <Camera className="w-4 h-4 text-blue-600" />
-                  {surplusPhotoFile ? '重新拍照' : '现场拍照'}
+                  {surplusPhotoFile ? t('rePhoto') : t('camera')}
                 </button>
 
                 {surplusPhotoPreview && (
@@ -1361,7 +1361,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             {/* Field: Notes */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                备注说明 (可选)
+                {t('notesOptional')}
               </label>
               <input
                 type="text"
@@ -1380,7 +1380,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 onClick={() => setShowSurplusModal(false)}
                 className="flex-1 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-medium"
               >
-                取消
+                {t('cancel')}
               </button>
               <button
                 type="button"
@@ -1388,7 +1388,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 onClick={handleSubmitSurplus}
                 className="flex-1 py-2 rounded-lg bg-amber-600 text-white text-xs font-bold shadow-md hover:bg-amber-700 disabled:opacity-50"
               >
-                {uploadingSurplusPhoto ? `上传中 ${surplusProgress}%` : surplusUploadFailed ? '重试' : '确认添加多货'}
+                {uploadingSurplusPhoto ? `${t('photoUploading')} ${surplusProgress}%` : surplusUploadFailed ? t('retry') : t('surplusConfirm')}
               </button>
             </div>
           </div>
