@@ -79,6 +79,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastAutoAttempt = useRef('');
   const latestDraftSignature = useRef('');
+  const unsavedAutoChanges = useRef(false);
   const activeKey = useRef<string | null>(null);
   const [activeVersionInfo, setActiveVersionInfo] = useState<any | null>(null);
 
@@ -211,7 +212,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     if (scanTimer.current) clearTimeout(scanTimer.current);
     const loc = targetLoc.trim();
     if (!loc) return;
-    if (saving || photoBusy || uploadsInFlight.current || uploadingSurplusPhoto) {
+    if (saving || photoBusy || uploadsInFlight.current || uploadingSurplusPhoto || unsavedAutoChanges.current) {
       setErrorMsg(t('scanBusy'));
       return;
     }
@@ -656,6 +657,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      if (auto) lastAutoAttempt.current = '';
       setErrorMsg(`${t('saveFailed')}: ${msg}`);
       triggerHaptic(false);
     } finally {
@@ -671,11 +673,13 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   latestDraftSignature.current = currentSignature;
   useEffect(() => {
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    if (!locData || saving || loading || photoBusy || photoFailed || uploadingSurplusPhoto || uploadsInFlight.current > 0
+    if (!locData) { unsavedAutoChanges.current = false; return; }
+    if (saving || loading || photoBusy || photoFailed || uploadingSurplusPhoto || uploadsInFlight.current > 0
       || shortageModalSku || showSurplusModal) return;
     const baseline = JSON.stringify([saveKey, locData.skus, Boolean(locData.inspection?.isEmptyConfirmed),
       locData.inspection?.notes || '', (locData.inspection?.photos || []).map(p => [p.photoId, p.objectKey, p.sku])]);
-    if (currentSignature === baseline || currentSignature === lastAutoAttempt.current) return;
+    unsavedAutoChanges.current = currentSignature !== baseline;
+    if (!unsavedAutoChanges.current || currentSignature === lastAutoAttempt.current) return;
     autoSaveTimer.current = setTimeout(() => {
       lastAutoAttempt.current = currentSignature;
       void handleSaveInspection(skuList, isEmptyConfirmed, locationNotes, photos, false, true);
