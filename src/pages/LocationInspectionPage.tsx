@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { t } from '../i18n';
+import { registerLanguageSafety } from '../i18n/safety';
 import { ReturnFields } from '../components/ReturnFields';
 import { focusScannerInput, scannerKeyboard } from '../utils/scannerInput';
 import { HallId, LocationAuditData, LocationSkuItem, InspectionPhotoItem } from '../types';
@@ -144,6 +146,23 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       data: locData, skus: skuList, photos, notes: locationNotes, empty: isEmptyConfirmed, uploads,
     });
   }, [locData, skuList, photos, locationNotes, isEmptyConfirmed, uploads]);
+
+  // Language switching is blocked while any location is saving/uploading.
+  // The latest state is read from a ref to avoid remounting scanner listeners.
+  const languageGuardRef = useRef({dirty: false, busy: false});
+  languageGuardRef.current = {
+    dirty: [...locationDrafts.values()].some(hasDraftChanges) ||
+      Boolean(locData && (JSON.stringify(skuList) !== JSON.stringify(locData.skus) ||
+        JSON.stringify(photos) !== JSON.stringify(locData.inspection?.photos || []) ||
+        locationNotes !== (locData.inspection?.notes || '') ||
+        isEmptyConfirmed !== Boolean(locData.inspection?.isEmptyConfirmed))) ||
+      Boolean(shortageModalSku || showSurplusModal || surplusPhotoFile || surplusNotesInput || surplusSkuInput || surplusBarcodeInput),
+    busy: saving || loading || photoBusy || uploadingSurplusPhoto || uploadsInFlight.current > 0 || photoFailed,
+  };
+  useEffect(() => registerLanguageSafety('inspection', {
+    dirty: () => languageGuardRef.current.dirty,
+    busy: () => languageGuardRef.current.busy,
+  }), []);
 
   // Haptic feedback for PDA
   const triggerHaptic = (success = true) => {
@@ -325,7 +344,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       Boolean(item.isReturn) || Boolean(item.returnCode?.trim())
     ) || Boolean(locationNotes.trim()) || photos.length > 0 || isEmptyConfirmed ||
       Boolean(locData.inspection?.isEmptyConfirmed);
-    if (hasEdits && !confirm('已录入核查记录。确定清除当前异常、备注和照片关联，并全部设为相符？')) return;
+    if (hasEdits && !confirm(t('allNormalConfirm')) return;
 
     // Only original WMS stock rows are retained; manually added surplus rows are discarded.
     const normalSkus = skuList.filter(item => item.systemQty > 0).map(item => ({
@@ -678,7 +697,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
               value={inputLoc}
               onChange={handleScanChange}
               onKeyDown={handleScanKeyDown}
-              placeholder="扫库位条码 / 输入库位 (如 109-047-1)"
+              placeholder={t('scanner')}
               className="w-full bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-8 py-2.5 text-base font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 transition"
               {...{ virtualkeyboardpolicy: !manualInput && virtualKeyboard ? 'manual' : 'auto' }}
               autoComplete="off"
@@ -793,7 +812,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3">
             <div className="flex items-center justify-between">
               <div>
-                <span className="text-[11px] text-slate-400 font-medium">当前盘点物理库位</span>
+                <span className="text-[11px] text-slate-400 font-medium">{t('currentPhysical')}</span>
                 <h2 className="text-2xl font-bold font-mono text-slate-900 tracking-tight flex items-center gap-2">
                   {locData.locationCode}
                   {isEmptyConfirmed && (
@@ -814,7 +833,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                   className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-sm active:scale-95 transition"
                 >
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  一键全相符 (正常)
+                  {t('allNormal')}
                 </button>
               )}
             </div>
@@ -832,7 +851,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
               <div className="mt-2 bg-amber-50 border border-amber-200 p-2.5 rounded-lg flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs text-amber-800">
                   <FileQuestion className="w-4 h-4 text-amber-600" />
-                  <span>WMS 账面中无此库位记录（稀疏空库位）</span>
+                  <span>{t('wmsEmpty')}</span>
                 </div>
                 <button
                   type="button"
@@ -1038,9 +1057,9 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
             <label className="block text-xs text-slate-600">
               照片关联
-              <select aria-label="照片关联记录" value={photoTargetSku} onChange={event => setPhotoTargetSku(event.target.value)}
+              <select aria-label={t("photoTarget")} value={photoTargetSku} onChange={event => setPhotoTargetSku(event.target.value)}
                 className="ml-2 border border-slate-300 rounded px-2 py-1 bg-white max-w-full">
-                <option value="">整个库位（正常 / 空库位 / 异常）</option>
+                <option value="">{t('wholeLocation')}</option>
                 {skuList.map((item, index) => (
                   <option key={index} value={item.sku}>{item.sku || '无 SKU 货物'} · {item.discrepancyType || '待核对'}</option>
                 ))}
@@ -1057,7 +1076,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 {upload.status === 'uploading' && <progress aria-label="照片上传进度" max={100} value={upload.progress} className="w-full h-2" />}
               </div>
             ))}
-            {photoFailed && <p className="text-xs text-red-600">请重试失败照片后再保存本库位核查。</p>}
+            {photoFailed && <p className="text-xs text-red-600">{t('photoRetry')}</p>}
             {photos.length > 0 && (
               <div className="flex items-center gap-2 overflow-x-auto py-1">
                 {photos.map((p) => (
