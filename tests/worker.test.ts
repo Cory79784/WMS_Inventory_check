@@ -122,7 +122,7 @@ describe('Worker Routes & Feasibility Diagnostics', () => {
     expect(mockPut).toHaveBeenCalled();
   });
 
-  it('Allows universal operational access without requiring Cloudflare Access headers', async () => {
+  it('Rejects unauthenticated requests', async () => {
     const env: Env = {
       DB: {} as unknown as D1Database,
       PHOTO_BUCKET: {} as unknown as R2Bucket,
@@ -131,12 +131,10 @@ describe('Worker Routes & Feasibility Diagnostics', () => {
 
     const req = new Request('https://audit.test/api/auth/me');
     const auth = await authenticateRequest(req, env);
-    expect(auth.user).not.toBeNull();
-    expect(auth.user?.roles).toContain('OPERATOR');
-    expect(auth.user?.roles).toContain('ADMIN');
+    expect(auth.user).toBeUndefined();
   });
 
-  it('Passes through authenticated email if provided, granting universal permissions', async () => {
+  it('Rejects forged legacy Access identity headers', async () => {
     const env: Env = {
       DB: {} as unknown as D1Database,
       PHOTO_BUCKET: {} as unknown as R2Bucket,
@@ -150,8 +148,6 @@ describe('Worker Routes & Feasibility Diagnostics', () => {
     });
 
     const auth = await authenticateRequest(customReq, env);
-    expect(auth.user).not.toBeNull();
-    expect(auth.user?.email).toBe('warehouse.user@example.com');
-    expect(auth.user?.roles).toContain('ADMIN');
+    expect(auth.user).toBeUndefined();
   });
 });

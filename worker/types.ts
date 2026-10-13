@@ -7,6 +7,7 @@ export interface Env {
   // Environment variables
   ENVIRONMENT: string;
   AUTH_MODE?: string;
+  AUTH_CREDENTIALS?: string;
 }
 
 export interface AuthUser {

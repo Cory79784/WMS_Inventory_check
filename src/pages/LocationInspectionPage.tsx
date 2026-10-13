@@ -80,6 +80,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   const lastAutoAttempt = useRef('');
   const latestDraftSignature = useRef('');
   const unsavedAutoChanges = useRef(false);
+  const saveInFlight = useRef(false);
   const activeKey = useRef<string | null>(null);
   const [activeVersionInfo, setActiveVersionInfo] = useState<any | null>(null);
 
@@ -586,7 +587,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
   // Save current location inspection to Cloudflare D1
   const handleSaveInspection = async (items = skuList, empty = isEmptyConfirmed, notes = locationNotes, linkedPhotos = photos, reset = false, auto = false) => {
-    if (!locData || saving || photoBusy || photoFailed || uploadingSurplusPhoto) return false;
+    if (!locData || saveInFlight.current || saving || photoBusy || photoFailed || uploadingSurplusPhoto) return false;
 
     // Check if all SKUs have been verified
     const unverifiedCount = items.filter((s) => s.actualQty === null || s.actualQty === undefined).length;
@@ -595,6 +596,8 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       if (!confirmSave) return false;
     }
 
+    saveInFlight.current = true;
+    const startingSignature = latestDraftSignature.current;
     setSaving(true);
     setSaveSuccessMsg(null);
     setErrorMsg(null);
@@ -642,7 +645,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       const key = locationKey(locData.hallId, locData.locationCode, locData.referenceImportId);
       const persistedSignature = JSON.stringify([key, items, empty, notes,
         linkedPhotos.map(p => [p.photoId, p.objectKey, p.sku])]);
-      const newerDraftExists = auto && latestDraftSignature.current !== persistedSignature;
+      const newerDraftExists = latestDraftSignature.current !== startingSignature && latestDraftSignature.current !== persistedSignature;
       if (!newerDraftExists) {
         locationDrafts.set(key, { data: savedData, skus: items, photos: linkedPhotos,
           notes, empty, uploads: [],
@@ -650,18 +653,18 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       }
       if (activeKey.current !== key) return true;
       setLocData(savedData);
-      if (!auto) {
+      if (!auto && !newerDraftExists) {
         setSkuList(items);
         setPhotos(linkedPhotos);
         setLocationNotes(notes);
         setIsEmptyConfirmed(empty);
         setUploads([]);
       }
-      setSaveSuccessMsg(incomplete ? t('draftSaved') : t('saved'));
+      if (!newerDraftExists) setSaveSuccessMsg(incomplete ? t('draftSaved') : t('saved'));
       triggerHaptic(true);
       // IME-based PDA scanners need an editable target after the save button took focus.
       if (androidScanner) focusScanner();
-      return true;
+      return !newerDraftExists;
 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -669,6 +672,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       triggerHaptic(false);
       return false;
     } finally {
+      saveInFlight.current = false;
       setSaving(false);
     }
   };
@@ -848,7 +852,8 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
           <span>{errorMsg}</span>
         </div>
       )}
-      {saveSuccessMsg && (
+      {locData && unsavedAutoChanges.current && !saving && <p className="text-xs text-amber-700">{t('unsavedChanges')}</p>}
+      {saveSuccessMsg && !unsavedAutoChanges.current && (
         <div role="status" className="fixed top-28 left-1/2 -translate-x-1/2 z-50 bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-2 rounded-lg text-xs flex items-center gap-2 pointer-events-none shadow-sm">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
           <span className="font-medium">{saveSuccessMsg}</span>
@@ -969,7 +974,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                           </span>
                         )}
                         {item.barcode && (
-                          <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded border border-blue-200 font-mono">
+                          <span dir="ltr" className="text-sm break-all max-w-full bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded border border-blue-200 font-mono">
                             {t('barcodeLabel')}{item.barcode}
                           </span>
                         )}
@@ -1017,8 +1022,8 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                       <div className="text-sm font-bold text-slate-800 font-mono">{item.systemQty}</div>
                     </div>
                     <div className="bg-slate-50 rounded p-1">
-                      <div className="text-[10px] text-slate-400">{t('available')}</div>
-                      <div className="text-xs font-semibold text-slate-700 font-mono">{item.availableQty}</div>
+                      <div className="text-[10px] font-semibold text-blue-700">{t('available')}</div>
+                      <div className="text-sm font-bold text-blue-700 font-mono">{item.availableQty}</div>
                     </div>
                     <div className="bg-slate-50 rounded p-1">
                       <div className="text-[10px] text-slate-400">{t('allocated')}</div>
@@ -1182,7 +1187,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
               className="flex-1 bg-slate-800 hover:bg-slate-900 text-white font-semibold py-3 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition text-sm disabled:opacity-50"
             >
               {saving ? <RotateCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              {t('saveLocation')}
+              {saving ? t('savingNow') : t('saveLocation')}
             </button>
 
 

@@ -1,3 +1,5 @@
+// Authentication is exercised against real D1 in authIntegration.test.ts.
+vi.mock('../worker/auth/access', () => ({ authenticateRequest: async () => ({ user: { userId: 'Cory', name: 'Cory', email: 'Cory', roles: [] } }) }));
 import { describe, it, expect, vi } from 'vitest';
 import { handleInventoryRoutes } from '../worker/routes/inventory';
 import { Env } from '../worker/types';

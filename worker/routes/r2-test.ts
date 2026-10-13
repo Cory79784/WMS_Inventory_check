@@ -25,7 +25,7 @@ export async function handleR2Test(request: Request, env: Env): Promise<Response
         const headers = new Headers();
         object.writeHttpMetadata(headers);
         headers.set('etag', object.httpEtag);
-        headers.set('Cache-Control', 'private, max-age=3600');
+        headers.set('Cache-Control', 'private, no-store');
 
         return new Response(object.body, { headers });
       } catch (err: unknown) {

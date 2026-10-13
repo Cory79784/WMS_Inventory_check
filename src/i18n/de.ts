@@ -76,6 +76,8 @@ export const de: Record<TranslationKey, string> = {
   missingSku: "SKU für Mehrbestand scannen/eingeben!",
   missingBarcode: "Barcode / eBarcode für Mehrbestand scannen!",
   noSkuPhotoWarning: "Mehrbestand ohne SKU/unbekannte Ware muss fotografiert werden!",
+  savingNow: "Wird gespeichert…",
+  unsavedChanges: "Ungespeicherte Änderungen",
   draftSaved: "Zwischengespeichert",
   noSkuExplanation: "Ware ohne SKU und Verpackung deutlich fotografieren!",
   mandatory: "⚠️ Pflicht:",

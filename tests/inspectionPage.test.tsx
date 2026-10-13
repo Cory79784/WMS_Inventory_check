@@ -546,6 +546,53 @@ describe('PDA inspection UI interactions', () => {
       skus: [expect.objectContaining({ discrepancyType: 'NO_SKU_SURPLUS' })],
     }));
   });
+  it('preserves long Barcode and inventory order with Arabic labels and LTR codes', async () => {
+    const storage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: window.localStorage });
+    window.localStorage.setItem('wms_pda_language', 'ar');
+    try {
+      const data = await api.fetchLocationAudit('H1', '130-072-1');
+      const barcode = '00123456789012345678901234567890123456789012345678901234567890';
+      data.skus[0].barcode = barcode;
+      api.fetchLocationAudit.mockResolvedValueOnce(data);
+      await query('130-072-1');
+      const label = Array.from(container.querySelectorAll('span')).find(e => e.textContent?.includes(barcode))!;
+      expect(label.getAttribute('dir')).toBe('ltr');
+      expect(label.classList.contains('text-sm')).toBe(true);
+      expect(label.classList.contains('break-all')).toBe(true);
+      const quantities = container.querySelector('.grid-cols-6')!;
+      expect(quantities.getAttribute('dir')).toBe('ltr');
+      expect(quantities.children[1].textContent).toContain('10');
+      expect(quantities.children[1].querySelector('.font-bold.text-blue-700')).not.toBeNull();
+    } finally {
+      window.localStorage.removeItem('wms_pda_language');
+      if (storage) Object.defineProperty(globalThis,'localStorage',storage);
+      else delete (globalThis as any).localStorage;
+    }
+  });
+  it('serializes two fast edits and never labels the newer unsaved snapshot as saved', async () => {
+    await query('130-071-1');
+    let finish: (value: any) => void = () => {};
+    api.saveLocationInspection.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    await click(button('正常'));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 900)); });
+    expect(api.saveLocationInspection).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    // Edit the notes while the first D1 response is still outstanding.
+    const notes = container.querySelector('textarea')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!.call(notes, 'newer note');
+      notes.dispatchEvent(new window.Event('input', { bubbles: true }));
+      await new Promise(resolve => setTimeout(resolve, 900));
+    });
+    expect(api.saveLocationInspection).toHaveBeenCalledTimes(1);
+    await act(async () => { finish({ success:true, inspectionId:'saved',savedAt:'2026-10-13T12:00:00Z' }); });
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(notes.value).toBe('newer note');
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 900)); });
+    expect(api.saveLocationInspection).toHaveBeenCalledTimes(2);
+    expect(api.saveLocationInspection.mock.calls[1][0].notes).toBe('newer note');
+  });
   it('does not show a saved notification when saving fails', async () => {
     await query('125-028-1');
     api.saveLocationInspection.mockRejectedValueOnce(new Error('D1 failed'));

@@ -75,6 +75,8 @@ export const ar: Record<TranslationKey, string> = {
   missingSku: "امسح أو أدخل SKU للزيادة!",
   missingBarcode: "امسح أو أدخل باركود الزيادة!",
   noSkuPhotoWarning: "يجب تصوير الزيادة دون SKU أو مجهولة الصنف!",
+  savingNow: "جارٍ الحفظ…",
+  unsavedChanges: "تغييرات غير محفوظة",
   draftSaved: "تم حفظ المسودة",
   noSkuExplanation: "يجب تصوير البضاعة دون SKU وعبوتها بوضوح!",
   mandatory: "⚠️ متطلب إلزامي:",
