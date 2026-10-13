@@ -148,7 +148,7 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
       const rawRows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
       if (rawRows.length < 2) {
-        setUploadStatusMsg('文件内容为空或无有效数据行');
+        setUploadStatusMsg(t('emptyFile'));
         return;
       }
 
@@ -215,7 +215,7 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setUploadStatusMsg(`解析文件失败: ${msg}`);
+      setUploadStatusMsg(`${t('parsingError')} ${msg}`);
     }
   };
 
@@ -223,7 +223,7 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
   const handleUploadAndPublish = async () => {
     if (!file || parsedRows.length === 0) return;
     setUploadProgress(5);
-    setUploadStatusMsg('正在初始化暂存会话...');
+    setUploadStatusMsg(t('initializing'));
 
     try {
       // 1. Stage session
@@ -242,7 +242,7 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
 
       const stageJson = await stageRes.json();
       if (!stageJson.success) {
-        throw new Error(stageJson.error || '创建暂存失败');
+        throw new Error(stageJson.error || t('creatingStageError'));
       }
 
       const importId = stageJson.importId;
@@ -275,7 +275,7 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
 
       // 3. Publish atomic version
       setIsPublishing(true);
-      setUploadStatusMsg('正在执行服务端最终校验并原子发布新版本...');
+      setUploadStatusMsg(t('publishing'));
 
       const pubRes = await fetch('/api/inventory/imports/publish', {
         method: 'POST',
@@ -285,7 +285,7 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
 
       const pubJson = await pubRes.json();
       if (!pubJson.success) {
-        throw new Error(pubJson.error || '版本发布失败');
+        throw new Error(pubJson.error || t('publishError'));
       }
 
       setUploadProgress(100);
@@ -296,7 +296,7 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
       loadImports();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setUploadStatusMsg(`❌ 操作失败: ${msg}`);
+      setUploadStatusMsg(`❌ ${t('operationError')} ${msg}`);
     } finally {
       setIsPublishing(false);
     }
@@ -327,11 +327,11 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
           <div className="flex items-center gap-2">
             <Layers className="w-5 h-5 text-brand-600" />
             <h1 className="text-base font-bold text-slate-800">
-              {currentHall} 厅 WMS 库存快照与版本管理 (Phase 2)
+              {currentHall} {t('wmsTitle')}
             </h1>
           </div>
           <p className="text-xs text-slate-500 pt-0.5">
-            多版本不可覆盖管理 &middot; 拖拽上传 &middot; 校验暂存 &middot; 原子发布
+            {t('wmsSubtitle')}
           </p>
         </div>
 
@@ -339,12 +339,12 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
           {activeImportId ? (
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-800 rounded-lg text-xs font-semibold border border-emerald-200">
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              当前生效: {activeImportId}
+              {t('currentActive')} {activeImportId}
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-800 rounded-lg text-xs font-semibold border border-amber-200">
               <AlertTriangle className="w-4 h-4 text-amber-600" />
-              暂无已发布的有效版本
+              {t('noPublished')}
             </span>
           )}
           <button
@@ -362,7 +362,7 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
       <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200 space-y-4">
         <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
           <Upload className="w-4 h-4 text-brand-600" />
-          上传新的 WMS 账面 Excel / CSV 文件
+          {t('uploadWms')}
         </h2>
 
         {/* Drop Zone */}
@@ -388,10 +388,10 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
         >
           <FileSpreadsheet className="w-8 h-8 text-brand-500 mx-auto mb-2" />
           <span className="text-xs font-bold text-slate-700 block">
-            {file ? file.name : '点击或拖拽 WMS Excel (.xlsx, .xls) 或 CSV 文件至此处'}
+            {file ? file.name : t('dropExcel')}
           </span>
           <span className="text-[11px] text-slate-400 block pt-1">
-            支持 18 列标准结构，浏览器端分块校验上传
+            {t('colSupport')}
           </span>
         </div>
 
@@ -447,13 +447,13 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
                 previewStats.equationPassed ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
               }`}>
                 {previewStats.equationPassed ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
-                数量等式 (库位库存 = 可用+已分配+冻结)
+                {t('quantityEquation')}
               </span>
 
               {previewStats.hallMismatch && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-medium bg-rose-50 text-rose-700 border border-rose-200">
                   <AlertTriangle className="w-3.5 h-3.5" />
-                  警告：表格内库区与当前选择厅不一致
+                  {t('hallMismatch')}
                 </span>
               )}
             </div>
@@ -479,7 +479,7 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
               className="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-bold transition disabled:opacity-50 flex items-center justify-center gap-1.5"
             >
               <Upload className="w-4 h-4" />
-              {isPublishing ? '正在发布中...' : `确认并发布为 ${currentHall} 新版本`}
+              {isPublishing ? t('publishBusy') : `确认并发布为 ${currentHall} 新版本`}
             </button>
           </div>
         )}
@@ -489,7 +489,7 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
       <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 space-y-3">
         <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
           <Search className="w-4 h-4 text-brand-600" />
-          条码检索与歧义选择验证 (决策 1-A & 决策 3-A 实测)
+          {t('barcodeTest')}
         </h2>
         <p className="text-xs text-slate-500">
           基于当前生效版本的<strong>{t('barcodeIndex')}</strong>测试扫描。输入复合 eBarcode 中的任意子条码（如 <code>XBDYDW096HEA0X</code>）或非唯一条码，验证毫秒级精确检索与歧义候选卡弹出。
@@ -509,7 +509,7 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
             disabled={searchingBarcode || !activeImportId}
             className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold disabled:opacity-50"
           >
-            {searchingBarcode ? '检索中...' : '测试检索'}
+            {searchingBarcode ? t('searching') : t('testSearch')}
           </button>
         </div>
 
@@ -548,11 +548,11 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
               </span>
               {barcodeSearchResult.isAmbiguous ? (
                 <span className="px-2 py-0.5 bg-amber-100 text-amber-800 font-semibold rounded text-[11px]">
-                  ⚠️ 命中多条记录 (触发决策 1-A 候选弹窗)
+                  {t('manyMatches')}
                 </span>
               ) : barcodeSearchResult.found ? (
                 <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-semibold rounded text-[11px]">
-                  ✅ 唯一定位
+                  {t('oneMatch')}
                 </span>
               ) : (
                 <span className="text-slate-400 text-[11px]">{t('noMatches')}</span>
@@ -583,7 +583,7 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
       <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 space-y-3">
         <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
           <History className="w-4 h-4 text-brand-600" />
-          {currentHall} 厅历史快照版本记录 ({importsHistory.length})
+          {currentHall} {t('historyTitle')} ({importsHistory.length})
         </h2>
 
         {importsHistory.length === 0 ? (
