@@ -141,7 +141,7 @@ export async function downloadInspectionResults(hallId: HallId, mode: 'all' | 'd
   if (!response.ok || !result.success) throw new Error(result.error || '导出失败');
   const workbook = await buildInspectionWorkbook(result.rows, loadOriginalPhoto);
   // ZIP compression is lossless: image byte streams and Excel layout remain unchanged.
-  const buffer = await workbook.xlsx.writeBuffer({ zip: { zlib: { level: 9 } } });
+  const buffer = await workbook.xlsx.writeBuffer({ zip: { compression: 'DEFLATE', compressionOptions: { level: 9 } } });
   const url = URL.createObjectURL(new Blob([new Uint8Array(buffer)], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   }));
