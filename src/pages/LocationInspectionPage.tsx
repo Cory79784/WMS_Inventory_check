@@ -641,7 +641,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setErrorMsg(`${t('saveFailed')} ${msg}`);
+      setErrorMsg(`${t('saveFailed')}: ${msg}`);
       triggerHaptic(false);
     } finally {
       setSaving(false);
@@ -876,7 +876,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
           <div className="space-y-2.5">
             <div className="flex items-center justify-between px-1">
               <span className="text-xs font-bold text-slate-700">
-                {t('locationCountTitle')} ({skuList.length} SKU)
+                {t('locationCountTitle')} ({skuList.length} {t('pieceCount')} SKU)
               </span>
               <button
                 type="button"
@@ -1032,7 +1032,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                 <Camera className="w-4 h-4 text-blue-600" />
-                {t('photoCountTitle')} ({photos.length})
+                {t('photoCountTitle')} ({photos.length} {t('photoCountUnit')})
               </span>
 
               <button
