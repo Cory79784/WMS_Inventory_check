@@ -1,0 +1,23 @@
+name: i18n validation
+on:
+  push:
+    branches: [i18n]
+  workflow_dispatch:
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Frontend typecheck
+        run: npm run lint
+      - name: Worker typecheck
+        run: npx tsc -p tsconfig.worker.json --noEmit
+      - name: Production build
+        run: npm run build
+      - name: Unit and integration tests
+        run: npm test
