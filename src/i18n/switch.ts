@@ -1,6 +1,13 @@
 import { languageSafety } from './safety';
 import { persistLanguage, readLanguage, t, type Language } from './index';
 
+// Suppress a second native beforeunload prompt after the user already confirmed a language reload.
+let approvedLanguageReload = false;
+export function consumeApprovedLanguageReload(): boolean {
+  const approved = approvedLanguageReload;
+  approvedLanguageReload = false;
+  return approved;
+}
 export interface LanguageSwitchActions {
   ask?: (message: string) => boolean;
   notify?: (message: string) => void;
@@ -19,6 +26,7 @@ export function switchLanguage(next: Language, actions: LanguageSwitchActions = 
     (actions.notify ?? window.alert)(t('storageError'));
     return false;
   }
+  if (!actions.reload) approvedLanguageReload = true;
   (actions.reload ?? (() => window.location.reload()))();
   return true;
 }
