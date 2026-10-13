@@ -381,7 +381,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     }
 
     if (shortageCount > shortageModalSku.systemQty) {
-      alert(`少货数量 (${shortageCount}) 不能大于账面库存 (${shortageModalSku.systemQty})！`);
+      alert(`${t('shortagePrefix')} (${shortageCount}) ${t('shortageTooMuch')} (${shortageModalSku.systemQty})!`);
       return;
     }
 
@@ -510,7 +510,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setSurplusUploadFailed(true);
-      alert(`添加多货失败: ${msg}`);
+      alert(`${t('surplusAddFailed')} ${msg}`);
       triggerHaptic(false);
     } finally {
       setUploadingSurplusPhoto(false);
@@ -575,7 +575,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     // Check if all SKUs have been verified
     const unverifiedCount = items.filter((s) => s.actualQty === null || s.actualQty === undefined).length;
     if (unverifiedCount > 0 && !empty) {
-      const confirmSave = confirm(`当前库位仍有 ${unverifiedCount} 个 SKU 未核查确认，是否确定提交暂存？`);
+      const confirmSave = confirm(`${t('unverifiedCountPrefix')} ${unverifiedCount} ${t('unverifiedConfirmSuffix')}`);
       if (!confirmSave) return;
     }
 
@@ -641,7 +641,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setErrorMsg(`保存失败: ${msg}`);
+      setErrorMsg(`${t('lastSaved')} ${msg}`);
       triggerHaptic(false);
     } finally {
       setSaving(false);
@@ -843,7 +843,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
               <p className="mt-2 text-xs text-slate-500">
                 {locData.lastInspection.versionNumber === locData.versionNumber ? t('inspected') : t('previouslyInspected')}：
                 {new Date(locData.lastInspection.completedAt).toLocaleString('zh-CN', { hour12: false })}
-                {locData.lastInspection.versionNumber !== locData.versionNumber && `（V${locData.lastInspection.versionNumber}，当前 V${locData.versionNumber} 待核查）`}
+                {locData.lastInspection.versionNumber !== locData.versionNumber && `(V${locData.lastInspection.versionNumber}, V${locData.versionNumber} ${t('stillInspect')})`}
               </p>
             )}
 
@@ -875,7 +875,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
           <div className="space-y-2.5">
             <div className="flex items-center justify-between px-1">
               <span className="text-xs font-bold text-slate-700">
-                库位商品列表 ({skuList.length} 个 SKU)
+                {t('locationCountTitle')} ({skuList.length} SKU)
               </span>
               <button
                 type="button"
@@ -944,7 +944,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                       )}
                       {isSurplus && (
                         <span className="inline-flex items-center gap-0.5 bg-amber-100 text-amber-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
-                          多货 +{item.differenceQty || 0}
+                          {t('surplus')} +{item.differenceQty || 0}
                         </span>
                       )}
                       {!item.discrepancyType && (
@@ -957,7 +957,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
                   {item.isReturn && (
                     <p className="mt-2 text-xs text-slate-600 break-all">
-                      {t('returnShort')}{item.returnCode ? ` · 退货码或跟踪号：${item.returnCode}` : ''}
+                      {t('returnShort')}{item.returnCode ? ` · ${t('returnedCodeLabel')} ${item.returnCode}` : ''}
                     </p>
                   )}
 
@@ -1031,7 +1031,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                 <Camera className="w-4 h-4 text-blue-600" />
-                现场照片存证 ({photos.length} 张)
+                {t('photoCountTitle')} ({photos.length})
               </span>
 
               <button
@@ -1072,9 +1072,9 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                   <span className="truncate">{upload.file.name}</span>
                   {upload.status === 'error' ? (
                     <button type="button" disabled={photoBusy || saving} onClick={() => uploadPhoto(upload)} className="text-blue-600 shrink-0">{t('retry')}</button>
-                  ) : <span className="shrink-0">{upload.status === 'saved' ? t('saved') : `上传中 ${upload.progress}%${upload.progress === 100 ? '（等待保存）' : ''}`}</span>}
+                  ) : <span className="shrink-0">{upload.status === 'saved' ? t('saved') : `${t('photoUploading')} ${upload.progress}%${upload.progress === 100 ? t('uploadWaiting') : ''}`}</span>}
                 </div>
-                {upload.status === 'uploading' && <progress aria-label="照片上传进度" max={100} value={upload.progress} className="w-full h-2" />}
+                {upload.status === 'uploading' && <progress aria-label={t('uploadQuantityLabel')} max={100} value={upload.progress} className="w-full h-2" />}
               </div>
             ))}
             {photoFailed && <p className="text-xs text-red-600">{t('photoRetry')}</p>}
@@ -1097,7 +1097,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       )}
 
       <p className="text-xs text-slate-500 px-1" data-testid="wms-import-time">
-        {t('wmsReference')}{locData ? `V${locData.versionNumber}` : activeVersionInfo ? `V${activeVersionInfo.version_number}` : '未发布'}
+        {t('wmsReference')}{locData ? `V${locData.versionNumber}` : activeVersionInfo ? `V${activeVersionInfo.version_number}` : t('notPublished')}
         {' · ' + t('uploadedAt')}
         {(locData ? locData.importedAt : activeVersionInfo?.imported_at)
           ? new Date((locData ? locData.importedAt : activeVersionInfo?.imported_at)!).toLocaleString('zh-CN', { hour12: false })
@@ -1158,12 +1158,12 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 max={shortageModalSku.systemQty}
                 value={shortageCountInput}
                 onChange={(e) => setShortageCountInput(e.target.value)}
-                placeholder="例如: 2"
+                placeholder="2"
                 className="w-full text-center text-2xl font-bold font-mono border-2 border-red-300 rounded-lg p-2 focus:outline-none focus:border-red-500"
                 autoFocus
               />
               <div className="text-right text-xs text-slate-500 mt-1">
-                确认后实盘数量将为: {Math.max(0, shortageModalSku.systemQty - (parseInt(shortageCountInput || '0', 10)))} 件
+                {t('confirmedActual')} {Math.max(0, shortageModalSku.systemQty - (parseInt(shortageCountInput || '0', 10)))} {t('pieces')}
               </div>
             </div>
 
@@ -1373,7 +1373,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
               />
             </div>
 
-            {uploadingSurplusPhoto && surplusPhotoFile && <progress aria-label="多货照片上传进度" max={100} value={surplusProgress} className="w-full h-2" />}
+            {uploadingSurplusPhoto && surplusPhotoFile && <progress aria-label={t('uploadQuantityLabel')} max={100} value={surplusProgress} className="w-full h-2" />}
             <div className="flex gap-2 pt-2">
               <button
                 type="button"
