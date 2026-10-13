@@ -312,17 +312,26 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     triggerHaptic(true);
   };
 
-  // This shortcut confirms quantities AND saves; the save button preserves edited results.
+  // If nothing has been recorded, this remains a one-tap action.
+  // Otherwise confirm before discarding current anomalies, notes and photo links.
   const handleSetAllNormal = async () => {
-    if (skuList.some((item) => item.differenceQty) && !confirm('将当前库位全部改为账面数量并保存，是否继续？')) return;
-    const normalSkus = skuList.map((item) => ({
+    if (!locData || saving || loading || photoBusy || photoFailed || uploadingSurplusPhoto) return;
+    const hasEdits = skuList.some(item =>
+      item.systemQty === 0 ||
+      (item.discrepancyType !== null && item.discrepancyType !== 'NORMAL') ||
+      Boolean(item.differenceQty) || Boolean(item.notes?.trim()) ||
+      Boolean(item.isReturn) || Boolean(item.returnCode?.trim())
+    ) || Boolean(locationNotes.trim()) || photos.length > 0 || isEmptyConfirmed ||
+      Boolean(locData.inspection?.isEmptyConfirmed);
+    if (hasEdits && !confirm('已录入核查记录。确定清除当前异常、备注和照片关联，并全部设为相符？')) return;
+
+    // Only original WMS stock rows are retained; manually added surplus rows are discarded.
+    const normalSkus = skuList.filter(item => item.systemQty > 0).map(item => ({
       ...item, actualQty: item.systemQty, differenceQty: 0,
-      discrepancyType: 'NORMAL' as const, notes: '一键确认相符',
+      discrepancyType: 'NORMAL' as const, notes: '',
       isReturn: false, returnCode: '',
     }));
-    setSkuList(normalSkus);
-    setIsEmptyConfirmed(false);
-    await handleSaveInspection(normalSkus, false);
+    await handleSaveInspection(normalSkus, false, '', [], true);
   };
 
   // Confirm Empty Location
@@ -536,7 +545,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   };
 
   // Save current location inspection to Cloudflare D1
-  const handleSaveInspection = async (items = skuList, empty = isEmptyConfirmed) => {
+  const handleSaveInspection = async (items = skuList, empty = isEmptyConfirmed, notes = locationNotes, linkedPhotos = photos, reset = false) => {
     if (!locData || saving || photoBusy || photoFailed || uploadingSurplusPhoto) return;
 
     // Check if all SKUs have been verified
@@ -560,7 +569,8 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       locationCode: locData.locationCode,
       isEmptyConfirmed: empty,
       status: finalStatus,
-      notes: locationNotes,
+      notes,
+      reset,
       skus: items.filter((s) => s.actualQty !== null && s.actualQty !== undefined).map((s) => ({
         sku: s.sku,
         barcode: s.barcode,
@@ -575,7 +585,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
         isReturn: Boolean(s.isReturn),
         returnCode: s.isReturn ? s.returnCode || '' : '',
       })),
-      photos: photos.map((p) => ({
+      photos: linkedPhotos.map((p) => ({
         photoId: p.photoId,
         objectKey: p.objectKey,
       })),
@@ -586,15 +596,17 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       const savedData: LocationAuditData = { ...locData, skus: items,
         lastInspection: incomplete ? locData.lastInspection : { completedAt: saved.savedAt, versionNumber: locData.versionNumber }, inspection: {
         inspectionId: saved.inspectionId, status: finalStatus, isEmptyConfirmed: empty,
-        notes: locationNotes, completedAt: incomplete ? null : saved.savedAt, photos,
+        notes, completedAt: incomplete ? null : saved.savedAt, photos: linkedPhotos,
       } };
       const key = locationKey(locData.hallId, locData.locationCode, locData.referenceImportId);
-      locationDrafts.set(key, { data: savedData, skus: items, photos,
-        notes: locationNotes, empty, uploads: [],
+      locationDrafts.set(key, { data: savedData, skus: items, photos: linkedPhotos,
+        notes, empty, uploads: [],
       });
       if (activeKey.current !== key) return;
       setLocData(savedData);
       setSkuList(items);
+      setPhotos(linkedPhotos);
+      setLocationNotes(notes);
       setIsEmptyConfirmed(empty);
       setUploads([]);
       setSaveSuccessMsg(incomplete ? '已暂存' : '已保存');
