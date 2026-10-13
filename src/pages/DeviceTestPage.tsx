@@ -291,7 +291,7 @@ export const DeviceTestPage: React.FC = () => {
         await writeD1TestRecord(item.key, item.value, 'Synced from Offline Queue');
       }
       setOfflinePendingQueue([]);
-      setD1Message('✅ 离线队列已全部同步至云端 D1');
+      setD1Message(t('queueSynced'));
       loadDiagnostics();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -433,7 +433,7 @@ export const DeviceTestPage: React.FC = () => {
                   onClick={() => simulateScan('120-075-1')}
                   className="text-xs px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-300"
                 >
-                  库位: 120-075-1
+                  {t('location')}: <span dir="ltr">120-075-1</span>
                 </button>
                 <button
                   type="button"
@@ -447,7 +447,7 @@ export const DeviceTestPage: React.FC = () => {
                   onClick={() => simulateScan('eBarcode-46')}
                   className="text-xs px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-300"
                 >
-                  多值条码: 46
+                  {t('barcodeAmbiguous')} <span dir="ltr">46</span>
                 </button>
               </div>
             </div>
@@ -457,7 +457,7 @@ export const DeviceTestPage: React.FC = () => {
           <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700">
-                扫码记录流 ({scanEvents.length})
+                {t('scanEvents')} ({scanEvents.length})
               </span>
               {scanEvents.length > 0 && (
                 <button
@@ -516,7 +516,7 @@ export const DeviceTestPage: React.FC = () => {
                       </span>
 
                       <span className="text-slate-500">
-                        击键间隔: {evt.charIntervalAvgMs}ms
+                        {t('keystrokeGap')} {evt.charIntervalAvgMs}ms
                       </span>
 
                       {evt.detectedEnter && (
@@ -578,8 +578,8 @@ export const DeviceTestPage: React.FC = () => {
 
                   {selectedPhoto && (
                     <div className="flex items-center justify-between text-xs text-slate-600 bg-slate-50 p-2 rounded">
-                      <span>文件: {selectedPhoto.name}</span>
-                      <span>大小: {Math.round(selectedPhoto.size / 1024)} KB</span>
+                      <span>{t('fileLabel')} <bdi dir="ltr">{selectedPhoto.name}</bdi></span>
+                      <span>{t('sizeLabel')} {Math.round(selectedPhoto.size / 1024)} KB</span>
                     </div>
                   )}
 
@@ -626,7 +626,7 @@ export const DeviceTestPage: React.FC = () => {
           <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700">
-                R2 测试对象列表 ({r2FileList.length})
+                {t('r2List')} ({r2FileList.length})
               </span>
               <button
                 type="button"
@@ -801,7 +801,7 @@ export const DeviceTestPage: React.FC = () => {
               {offlinePendingQueue.length > 0 && (
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
                   <div className="flex items-center justify-between text-xs text-amber-900 font-bold">
-                    <span>本地待同步记录 ({offlinePendingQueue.length})</span>
+                    <span>{t('localQueue')} ({offlinePendingQueue.length})</span>
                     <button
                       type="button"
                       onClick={handleSyncOfflineQueue}
@@ -844,12 +844,12 @@ export const DeviceTestPage: React.FC = () => {
               </div>
               {authData?.user ? (
                 <div className="pt-1 text-[11px] text-slate-600 border-t border-slate-200 mt-1">
-                  用户: {JSON.stringify(authData.user)}
+                  {t('networkUser')} <span dir="ltr">{JSON.stringify(authData.user)}</span>
                 </div>
               ) : null}
               {authData?.error && (
                 <p className="text-[11px] text-amber-700 pt-1">
-                  提示: {authData.error}
+                  {t('networkHint')} {authData.error}
                 </p>
               )}
             </div>
