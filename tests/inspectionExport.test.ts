@@ -78,6 +78,23 @@ describe('Excel inspection results', () => {
     expect(sheet.getImages()).toHaveLength(8);
   });
 
+  it('exports optional notes for fully matched and shortage locations without changing inventory values', async () => {
+    const workbook = await buildInspectionWorkbook([
+      { ...row, inspectionId: 'normal-notes', sku: 'SKU-N', notes: '货物损坏、无 SKU 标签',
+        actualQty: 10, systemQty: 10, differenceQty: 0, discrepancyType: 'NORMAL', photoKeys: [] },
+      { ...row, inspectionId: 'shortage-notes', sku: 'SKU-S', notes: '实际未收货；货架损坏',
+        actualQty: 8, systemQty: 10, differenceQty: -2, discrepancyType: 'SHORTAGE', photoKeys: [] },
+    ], async () => { throw new Error('No photos should be fetched'); });
+    const restored = new ExcelJS.Workbook();
+    await restored.xlsx.load(await workbook.xlsx.writeBuffer());
+    const sheet = restored.worksheets[0];
+    expect(sheet.getRow(1).getCell(14).value).toBe('备注');
+    expect(sheet.getRow(2).getCell(14).value).toBe('货物损坏、无 SKU 标签');
+    expect(sheet.getRow(2).getCell(8).value).toBe(0);
+    expect(sheet.getRow(3).getCell(14).value).toBe('实际未收货；货架损坏');
+    expect(sheet.getRow(3).getCell(8).value).toBe(-2);
+  });
+
   it('does not silently omit a failed image download', async () => {
     await expect(buildInspectionWorkbook([row], async () => {
       throw new Error('Photo missing');

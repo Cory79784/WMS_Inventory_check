@@ -262,4 +262,11 @@ export const de: Record<TranslationKey, string> = {
   footerTitle: "PDA-Lagerbestandsprüfung",
   currentHallLabel: "Aktuelle Halle:",
   siteTitle: "PDA-Lagerbestandsprüfung",
+  locationRemarkLabel: "Lagerplatznotiz (bei korrektem und abweichendem Bestand)",
+  locationRemarkPlaceholder: "Z. B. beschädigte Ware, fehlendes SKU-Etikett, unbedeckter Versandaufkleber, beschädigtes Regal oder sonstige Besonderheiten",
+  photoUploadPendingHint: "Foto hochgeladen. Bitte „Lagerplatzprüfung speichern“ anklicken, um die Fotozuordnung zu speichern.",
+  photoUnsavedBadge: "Foto noch nicht gespeichert",
+  exitConfirm: "Bestandsprüfsystem verlassen?",
+  exitUnsavedConfirm: "Es gibt ungespeicherte Prüfdaten. Beim Verlassen gehen sie verloren. Trotzdem beenden?",
+  exitBusy: "Speichern oder Foto-Upload läuft. Das System kann derzeit nicht verlassen werden.",
 };

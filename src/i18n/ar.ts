@@ -261,4 +261,11 @@ export const ar: Record<TranslationKey, string> = {
   footerTitle: "نظام جرد المخزون PDA",
   currentHallLabel: "قاعة العمل الحالية:",
   siteTitle: "جرد مخزون المستودع PDA",
+  locationRemarkLabel: "ملاحظات الموقع (للحالات الطبيعية وغير الطبيعية)",
+  locationRemarkPlaceholder: "مثال: بضاعة تالفة، لا يوجد ملصق SKU، لم تُغطَّ بوليصة الشحن، رف تالف أو حالات خاصة أخرى",
+  photoUploadPendingHint: "تم رفع الصورة. اضغط «حفظ فحص الموقع» لحفظ ارتباط الصورة بالسجل.",
+  photoUnsavedBadge: "صورة بانتظار الحفظ",
+  exitConfirm: "هل تريد الخروج من نظام تدقيق المخزون؟",
+  exitUnsavedConfirm: "توجد بيانات فحص غير محفوظة. ستفقد عند الخروج. هل تريد المتابعة؟",
+  exitBusy: "الحفظ أو رفع الصور جارٍ، لا يمكن الخروج الآن.",
 };

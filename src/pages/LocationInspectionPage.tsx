@@ -34,6 +34,7 @@ interface PhotoUpload {
   progress: number;
   status: 'uploading' | 'saved' | 'error';
   sku?: string;
+  previewUrl?: string;
 }
 interface LocationDraft {
   data: LocationAuditData;
@@ -538,9 +539,12 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     try {
       const result = await uploadInspectionPhoto(task.file, locData.hallId, locData.locationCode,
         (progress) => update({ progress }));
+      // Original file stays intact. A local blob URL makes newly captured photos
+      // visible immediately, even if the private R2 GET is temporarily unavailable.
+      const localPreview = task.previewUrl || result.previewUrl;
       update({ status: 'saved', progress: 100 }, {
-        photoId: result.photoId, objectKey: result.objectKey, previewUrl: result.previewUrl,
-        sku: task.sku || undefined,
+        photoId: result.photoId, objectKey: result.objectKey,
+        previewUrl: localPreview, sku: task.sku || undefined,
       });
       triggerHaptic(true);
     } catch (error) {
@@ -556,6 +560,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     if (!locData || uploadsInFlight.current) return;
     const tasks: PhotoUpload[] = files.map((file) => ({
       id: crypto.randomUUID(), file, progress: 0, status: 'uploading', sku: photoTargetSku || undefined,
+      previewUrl: (() => { try { return URL.createObjectURL(file); } catch { return undefined; } })(),
     }));
     const key = locationKey(locData.hallId, locData.locationCode, locData.referenceImportId);
     locationDrafts.set(key, {
@@ -1027,6 +1032,17 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             })}
           </div>
 
+          {/* Optional notes apply to this location regardless of stock discrepancy. */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 space-y-2">
+            <label htmlFor="location-inspection-notes" className="block text-xs font-semibold text-slate-700">
+              {t('locationRemarkLabel')}
+            </label>
+            <textarea id="location-inspection-notes" rows={2} value={locationNotes}
+              disabled={saving || loading} onChange={(event) => setLocationNotes(event.target.value)}
+              placeholder={t('locationRemarkPlaceholder')}
+              className="w-full min-h-20 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 resize-y" />
+          </div>
+
           {/* Location Inspection Photos Section */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 space-y-2">
             <div className="flex items-center justify-between">
@@ -1070,14 +1086,20 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             {uploads.map((upload) => (
               <div key={upload.id} className="text-xs text-slate-600 space-y-1">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate">{upload.file.name}</span>
+                  <span className="flex items-center gap-2 min-w-0">
+                    {upload.status !== 'saved' && upload.previewUrl && <img src={upload.previewUrl} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />}
+                    <span className="truncate">{upload.file.name}</span>
+                  </span>
                   {upload.status === 'error' ? (
                     <button type="button" disabled={photoBusy || saving} onClick={() => uploadPhoto(upload)} className="text-blue-600 shrink-0">{t('retry')}</button>
-                  ) : <span className="shrink-0">{upload.status === 'saved' ? t('saved') : `${t('photoUploading')} ${upload.progress}%${upload.progress === 100 ? t('uploadWaiting') : ''}`}</span>}
+                  ) : <span className="shrink-0">{upload.status === 'saved' ? t('photoUnsavedBadge') : `${t('photoUploading')} ${upload.progress}%${upload.progress === 100 ? t('uploadWaiting') : ''}`}</span>}
                 </div>
                 {upload.status === 'uploading' && <progress aria-label={t('uploadQuantityLabel')} max={100} value={upload.progress} className="w-full h-2" />}
               </div>
             ))}
+            {photos.some(p => !locData.inspection?.photos.some(saved => saved.photoId === p.photoId)) && (
+              <p role="status" className="text-xs text-amber-700">{t('photoUploadPendingHint')}</p>
+            )}
             {photoFailed && <p className="text-xs text-red-600">{t('photoRetry')}</p>}
             {photos.length > 0 && (
               <div className="flex items-center gap-2 overflow-x-auto py-1">
