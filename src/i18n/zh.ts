@@ -259,5 +259,8 @@ export const zh = {
   archPending2: "三个厅的完整物理库位编码规律与廊道范围",
   archPending3: "真实 WMS Excel 样本文件读取与 18 列匹配",
   archPending4: "廊道终点边界处理与历史复盘显示规则",
+  footerTitle: "海外仓 PDA 库存核查系统",
+  currentHallLabel: "当前操作厅:",
+  siteTitle: "海外仓 PDA 库存核查",
 } as const;
 export type TranslationKey = keyof typeof zh;
