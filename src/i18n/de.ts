@@ -259,4 +259,7 @@ export const de: Record<TranslationKey, string> = {
   archPending2: "Lagerplatz-Code-Regeln und Ganggrenzen für drei Hallen",
   archPending3: "Echte WMS-Excel-Datei und Zuordnung der 18 Spalten",
   archPending4: "Ganggrenzen und Anzeige historischer Prüfungen",
+  footerTitle: "PDA-Lagerbestandsprüfung",
+  currentHallLabel: "Aktuelle Halle:",
+  siteTitle: "PDA-Lagerbestandsprüfung",
 };
