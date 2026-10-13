@@ -182,4 +182,5 @@ export const de: Record<TranslationKey, string> = {
   d1Success: "✅ D1 erfolgreich geschrieben: ID",
   d1Failure: "❌ Schreiben fehlgeschlagen:",
   syncFailure: "Synchronisierung fehlgeschlagen:",
+  photoUploading: "Upload läuft",
 };
