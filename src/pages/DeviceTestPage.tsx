@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { registerLanguageSafety } from '../i18n/safety';
 import {
   fetchHealth,
   fetchD1Data,
@@ -59,6 +60,13 @@ export const DeviceTestPage: React.FC = () => {
   // Device Info
   const userAgent = navigator.userAgent;
   const isAndroid = /Android/i.test(userAgent);
+
+  const languageSafetyRef = useRef({dirty: false, busy: false});
+  languageSafetyRef.current = {dirty: Boolean(selectedPhoto || d1TestVal || offlinePendingQueue.length || scanInputValue), busy: uploadStatus === 'UPLOADING' || d1Loading};
+  useEffect(() => registerLanguageSafety('device', {
+    dirty: () => languageSafetyRef.current.dirty,
+    busy: () => languageSafetyRef.current.busy,
+  }), []);
 
   // Autofocus scanner input
   useEffect(() => {
