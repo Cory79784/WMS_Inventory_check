@@ -45,6 +45,7 @@ interface LocationDraft {
 }
 // Page-session drafts only: no persistence, offline queue or background processing.
 const locationDrafts = new Map<string, LocationDraft>();
+export const hasUnsavedInspectionDrafts = () => [...locationDrafts.values()].some(hasDraftChanges);
 const locationKey = (hall: string, code: string, version: string) => `${hall}:${code.toUpperCase()}:${version}`;
 const hasDraftChanges = (draft: LocationDraft) =>
   JSON.stringify(draft.skus) !== JSON.stringify(draft.data.skus) ||
