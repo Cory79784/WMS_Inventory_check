@@ -641,7 +641,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setErrorMsg(`${t('lastSaved')} ${msg}`);
+      setErrorMsg(`${t('saveFailed')} ${msg}`);
       triggerHaptic(false);
     } finally {
       setSaving(false);
