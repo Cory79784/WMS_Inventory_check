@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { registerLanguageSafety, languageSafety } from './i18n/safety';
+import { confirmPdaExit } from './utils/exitPrompt';
+import { consumeApprovedLanguageReload } from './i18n/switch';
 import { readLanguage, t } from './i18n';
 import { Header } from './components/Header';
 import { LocationInspectionPage, hasUnsavedInspectionDrafts } from './pages/LocationInspectionPage';
@@ -29,13 +31,7 @@ export const App: React.FC = () => {
     }
     const onPopState = () => {
       if (exiting) return;
-      const safety = languageSafety();
-      if (safety.busy) {
-        window.history.pushState({ [marker]: true }, '', window.location.href);
-        window.alert(t('exitBusy'));
-        return;
-      }
-      if (!window.confirm(t(safety.dirty ? 'exitUnsavedConfirm' : 'exitConfirm'))) {
+      if (!confirmPdaExit()) {
         window.history.pushState({ [marker]: true }, '', window.location.href);
         return;
       }
@@ -43,7 +39,7 @@ export const App: React.FC = () => {
       window.history.back();
     };
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (exiting || !languageSafety().dirty) return;
+      if (exiting || consumeApprovedLanguageReload() || !languageSafety().dirty) return;
       event.preventDefault();
       event.returnValue = '';
     };
