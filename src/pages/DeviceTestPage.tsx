@@ -408,7 +408,7 @@ export const DeviceTestPage: React.FC = () => {
             </div>
 
             <p className="text-xs text-slate-500 leading-relaxed">
-              请按下 PDA 侧面实体扫描键对准库位条码或 SKU 条码。如果设备工作在 Keyboard Wedge 模式，输入框将高速自动填入条码并附带回车或 Tab 键。
+              {t('scanInstruction')}
             </p>
 
             <div className="space-y-2">
@@ -472,7 +472,7 @@ export const DeviceTestPage: React.FC = () => {
 
             {scanEvents.length === 0 ? (
               <div className="text-center py-6 text-slate-400 text-xs">
-                暂无扫码事件。请按扫描键或点击上方模拟条码。
+                {t('noScan')}
               </div>
             ) : (
               <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
@@ -547,7 +547,7 @@ export const DeviceTestPage: React.FC = () => {
               {t('cameraTitle')}
             </h2>
             <p className="text-xs text-slate-500 leading-relaxed">
-              测试浏览器唤起后置摄像头拍照能力，验证照片二进制数据能否直接上传至 Cloudflare R2 私有 Bucket。
+              {t('cameraInstruction')}
             </p>
 
             <div className="space-y-3 pt-1">
@@ -743,7 +743,7 @@ export const DeviceTestPage: React.FC = () => {
               </button>
             </div>
             <p className="text-[11px] text-slate-500">
-              可以在手机/PDA与电脑上同时打开本页面，在一端写入，在另一端点击刷新，验证云端数据一致性。
+              {t('multiDeviceInfo')}
             </p>
 
             <div className="space-y-1.5 max-h-56 overflow-y-auto">
@@ -777,7 +777,7 @@ export const DeviceTestPage: React.FC = () => {
               {t('offlineTitle')}
             </h2>
             <p className="text-xs text-slate-500 leading-relaxed">
-              现场 Wi-Fi 偶发中断时，数据不会静默丢弃。输入暂存入本地待同步队列，网络恢复后安全提交。
+              {t('offlineInfo')}
             </p>
 
             <div className="space-y-2 pt-1">
