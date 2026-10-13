@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { registerLanguageSafety } from '../i18n/safety';
 import * as XLSX from 'xlsx';
 import { HallId } from '../types';
 import {
@@ -67,6 +68,13 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
   const [testBarcodeQuery, setTestBarcodeQuery] = useState('');
   const [barcodeSearchResult, setBarcodeSearchResult] = useState<any | null>(null);
   const [searchingBarcode, setSearchingBarcode] = useState(false);
+
+  const languageSafetyRef = useRef({dirty: false, busy: false});
+  languageSafetyRef.current = {dirty: Boolean(file || fileSha256 || parsedRows.length || sourceExportDate && file), busy: isPublishing || loading || searchingBarcode};
+  useEffect(() => registerLanguageSafety('import', {
+    dirty: () => languageSafetyRef.current.dirty,
+    busy: () => languageSafetyRef.current.busy,
+  }), []);
 
   // Load version list
   const loadImports = async () => {
