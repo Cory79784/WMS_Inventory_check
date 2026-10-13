@@ -414,6 +414,7 @@ export const DeviceTestPage: React.FC = () => {
             <div className="space-y-2">
               <input
                 ref={scanInputRef}
+                dir="ltr"
                 type="text"
                 value={scanInputValue}
                 onChange={(e) => setScanInputValue(e.target.value)}
