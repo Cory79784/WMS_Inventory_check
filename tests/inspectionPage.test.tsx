@@ -444,7 +444,7 @@ describe('PDA inspection UI interactions', () => {
     expect(api.uploadInspectionPhoto.mock.calls[0][0]).toBe(file);
     await click(button('保存本库位核查'));
     expect(api.saveLocationInspection).toHaveBeenCalledWith(expect.objectContaining({
-      photos: [{ photoId: 'unknown-photo', objectKey: 'original.jpg' }],
+      photos: [{ photoId: 'unknown-photo', objectKey: 'original.jpg', sku: '无SKU未知品' }],
       skus: [expect.objectContaining({ discrepancyType: 'NO_SKU_SURPLUS' })],
     }));
   });
