@@ -182,4 +182,5 @@ export const vi: Record<TranslationKey, string> = {
   d1Success: "✅ Ghi D1 thành công: ID",
   d1Failure: "❌ Ghi thất bại:",
   syncFailure: "Đồng bộ thất bại:",
+  photoUploading: "Đang tải lên",
 };
