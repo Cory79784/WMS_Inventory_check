@@ -590,7 +590,7 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
           <p className="text-xs text-slate-400 py-4 text-center">{t('noHistory')}</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+            <table dir="ltr" className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-400 text-[11px]">
                   <th className="py-2 px-2">{t('version')}</th>
