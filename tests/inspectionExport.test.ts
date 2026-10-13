@@ -88,10 +88,10 @@ describe('Excel inspection results', () => {
     const restored = new ExcelJS.Workbook();
     await restored.xlsx.load(await workbook.xlsx.writeBuffer());
     const sheet = restored.worksheets[0];
-    expect(sheet.getRow(1).getCell(13).value).toBe('备注');
-    expect(sheet.getRow(2).getCell(13).value).toBe('货物损坏、无 SKU 标签');
+    expect(sheet.getRow(1).getCell(14).value).toBe('备注');
+    expect(sheet.getRow(2).getCell(14).value).toBe('货物损坏、无 SKU 标签');
     expect(sheet.getRow(2).getCell(8).value).toBe(0);
-    expect(sheet.getRow(3).getCell(13).value).toBe('实际未收货；货架损坏');
+    expect(sheet.getRow(3).getCell(14).value).toBe('实际未收货；货架损坏');
     expect(sheet.getRow(3).getCell(8).value).toBe(-2);
   });
 
