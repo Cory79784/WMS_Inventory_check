@@ -182,5 +182,6 @@ export const zh = {
   d1Success: "✅ D1 写入成功: ID",
   d1Failure: "❌ 写入失败:",
   syncFailure: "同步失败:",
+  photoUploading: "上传中",
 } as const;
 export type TranslationKey = keyof typeof zh;
