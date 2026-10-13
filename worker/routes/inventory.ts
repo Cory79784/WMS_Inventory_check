@@ -604,7 +604,7 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
         savedSkus = skuRecords.results;
 
         const photoRecords = await env.DB.prepare(`
-          SELECT * FROM inspection_photos WHERE inspection_id = ? ORDER BY captured_at ASC
+          SELECT p.*, si.sku AS linked_sku FROM inspection_photos p LEFT JOIN sku_inspections si ON si.id = p.sku_inspection_id WHERE p.inspection_id = ? ORDER BY p.captured_at ASC
         `).bind(inspection.inspection_id).all();
         savedPhotos = photoRecords.results;
       }
@@ -681,7 +681,7 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
             isEmptyConfirmed: Boolean(inspection.is_empty_confirmed),
             notes: inspection.notes || '',
             completedAt: inspection.completed_at,
-            photos: savedPhotos.map((p) => ({ photoId: p.photo_id, objectKey: p.object_key })),
+            photos: savedPhotos.map((p) => ({ photoId: p.photo_id, objectKey: p.object_key, sku: p.linked_sku || undefined })),
           } : null,
           navigation: {
             currentIndex: null,
@@ -799,9 +799,12 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
       );
       if (body.reset) stmts.push(env.DB.prepare('DELETE FROM inspection_photos WHERE inspection_id = ?').bind(inspectionId));
 
+      const skuPhotoIds = new Map<string, string>();
+
       // 3. Insert new sku_inspections
       for (const item of body.skus || []) {
         const skuInspId = `sinsp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        if (item.sku && !skuPhotoIds.has(item.sku)) skuPhotoIds.set(item.sku, skuInspId);
         stmts.push(
           env.DB.prepare(`
             INSERT INTO sku_inspections (
@@ -824,19 +827,22 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
         );
       }
 
-      // 4. Save photo links if provided
+      // 4. Attach photos to the current SKU record when selected; otherwise to the location.
+      // Existing photo IDs are rebound after each save because SKU inspection IDs are replaced.
       for (const p of body.photos || []) {
-        stmts.push(
-          env.DB.prepare(`
-            INSERT OR IGNORE INTO inspection_photos (photo_id, inspection_id, object_key, captured_at)
-            VALUES (?, ?, ?, ?)
-          `).bind(
-            p.photoId || `photo_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-            inspectionId,
-            p.objectKey,
-            nowUtc
-          )
-        );
+        const skuInspectionId = p.sku ? skuPhotoIds.get(p.sku) || null : null;
+        stmts.push(env.DB.prepare(`
+          INSERT INTO inspection_photos (photo_id, inspection_id, sku_inspection_id, object_key, captured_at)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(photo_id) DO UPDATE SET
+            sku_inspection_id = excluded.sku_inspection_id
+        `).bind(
+          p.photoId || `photo_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          inspectionId,
+          skuInspectionId,
+          p.objectKey,
+          nowUtc
+        ));
       }
 
       // 5. Audit event
