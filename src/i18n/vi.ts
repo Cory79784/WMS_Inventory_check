@@ -259,4 +259,7 @@ export const vi: Record<TranslationKey, string> = {
   archPending2: "Quy luật mã vị trí và giới hạn dãy của ba khu",
   archPending3: "Đọc Excel WMS thực và đối chiếu 18 cột",
   archPending4: "Xử lý cuối dãy và hiển thị lịch sử kiểm kê",
+  footerTitle: "Hệ thống kiểm kê kho PDA",
+  currentHallLabel: "Khu đang làm việc:",
+  siteTitle: "Kiểm kê kho PDA",
 };
