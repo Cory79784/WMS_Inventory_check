@@ -22,7 +22,8 @@ describe('Excel inspection results', () => {
       loaded.push(key);
       return { base64: originalPng, extension: 'png', width: 1, height: 1 };
     });
-    const buffer = await workbook.xlsx.writeBuffer();
+    // Exercise the same lossless ZIP settings used by the PDA export download.
+    const buffer = await workbook.xlsx.writeBuffer({ zip: { compression: 'DEFLATE', compressionOptions: { level: 9 } } });
     const restored = new ExcelJS.Workbook();
     await restored.xlsx.load(buffer);
     expect(restored.worksheets).toHaveLength(1);

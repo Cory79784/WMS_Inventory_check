@@ -264,7 +264,7 @@ export const de: Record<TranslationKey, string> = {
   siteTitle: "PDA-Lagerbestandsprüfung",
   locationRemarkLabel: "Lagerplatznotiz (bei korrektem und abweichendem Bestand)",
   locationRemarkPlaceholder: "Z. B. beschädigte Ware, fehlendes SKU-Etikett, unbedeckter Versandaufkleber, beschädigtes Regal oder sonstige Besonderheiten",
-  photoUploadPendingHint: "Foto hochgeladen. Bitte „Lagerplatzprüfung speichern“ anklicken, um die Fotozuordnung zu speichern.",
+  photoUploadPendingHint: "Foto hochgeladen. Die Zuordnung zur Prüfung wird automatisch gespeichert.",
   photoUnsavedBadge: "Foto noch nicht gespeichert",
   exitConfirm: "Bestandsprüfsystem verlassen?",
   exitUnsavedConfirm: "Es gibt ungespeicherte Prüfdaten. Beim Verlassen gehen sie verloren. Trotzdem beenden?",

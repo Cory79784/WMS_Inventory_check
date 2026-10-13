@@ -69,6 +69,43 @@ describe('PDA inspection UI interactions', () => {
     expect(scanInput().value).toBe('109-028-1');
     expect(container.textContent).not.toContain('保存并下一个库位');
   });
+  it('automatically persists a normal confirmation to D1 without the Save button', async () => {
+    await query('129-040-1');
+    api.saveLocationInspection.mockClear();
+    await click(button('正常'));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 950)); });
+    expect(api.saveLocationInspection).toHaveBeenCalledWith(expect.objectContaining({
+      locationCode: '129-040-1', status: 'VERIFIED',
+      skus: [expect.objectContaining({actualQty: 10, differenceQty: 0, discrepancyType: 'NORMAL'})],
+    }));
+  });
+  it('automatically persists shortage quantities to D1 without manual saving', async () => {
+    await query('129-041-1');
+    api.saveLocationInspection.mockClear();
+    await click(button('少货'));
+    await click(button('确认少货'));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 950)); });
+    expect(api.saveLocationInspection).toHaveBeenCalledWith(expect.objectContaining({
+      locationCode: '129-041-1', skus: [expect.objectContaining({actualQty: 9, differenceQty: -1, discrepancyType: 'SHORTAGE'})],
+    }));
+  });
+  it('automatically persists manually added surplus to D1 without manual saving', async () => {
+    await query('129-042-1');
+    api.saveLocationInspection.mockClear();
+    await click(button('+ 现场多货'));
+    const sku = container.querySelector('input[placeholder="扫描或输入外箱 SKU"]') as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(sku, 'SURPLUS-TEST');
+      sku.dispatchEvent(new window.Event('input', {bubbles:true}));
+    });
+    await click(button('确认添加多货'));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 950)); });
+    expect(api.saveLocationInspection).toHaveBeenCalledWith(expect.objectContaining({
+      locationCode: '129-042-1', skus: expect.arrayContaining([
+        expect.objectContaining({sku: 'SURPLUS-TEST', actualQty: 1, differenceQty: 1, discrepancyType: 'SURPLUS'})
+      ]),
+    }));
+  });
   it('keeps scanner inputMode none by default and returns to scanner mode after manual entry', async () => {
     expect(scanInput().getAttribute('inputmode')).toBe('none');
     await click(container.querySelector('[aria-label="手动输入库位"]')!);
@@ -414,7 +451,7 @@ describe('PDA inspection UI interactions', () => {
       expect(api.saveLocationInspection).not.toHaveBeenCalled();
       await act(async () => finish({ photoId: 'capture-1', objectKey: 'inspections/H1/capture.jpg', previewUrl: '/private-r2' }));
       expect(container.querySelector('img[src="blob:original-unmodified"]')).toBeTruthy();
-      expect(container.textContent).toContain('照片已上传');
+      expect(container.textContent).toContain('核查记录正在自动保存');
       expect(api.uploadInspectionPhoto.mock.calls[0][0]).toBe(file);
       await click(button('正常'));
       await click(button('保存本库位核查'));

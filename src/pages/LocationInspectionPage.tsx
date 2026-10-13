@@ -76,6 +76,10 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   const [surplusUploadFailed, setSurplusUploadFailed] = useState(false);
   const requestId = useRef(0);
   const uploadsInFlight = useRef(0);
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastAutoAttempt = useRef('');
+  const latestDraftSignature = useRef('');
+  const unsavedAutoChanges = useRef(false);
   const activeKey = useRef<string | null>(null);
   const [activeVersionInfo, setActiveVersionInfo] = useState<any | null>(null);
 
@@ -212,10 +216,17 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       setErrorMsg(t('scanBusy'));
       return;
     }
+    let flushed = false;
+    if (unsavedAutoChanges.current && locData) {
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+      const ok = await handleSaveInspection(skuList, isEmptyConfirmed, locationNotes, photos, false, true);
+      if (!ok) return;
+      flushed = true;
+    }
     const id = ++requestId.current;
     if (androidScanner && manualInput && !virtualKeyboard) scanInputRef.current?.blur();
     setManualInput(false);
-    if (locData) locationDrafts.set(locationKey(locData.hallId, locData.locationCode, locData.referenceImportId), {
+    if (locData && !flushed) locationDrafts.set(locationKey(locData.hallId, locData.locationCode, locData.referenceImportId), {
       data: locData, skus: skuList, photos, notes: locationNotes, empty: isEmptyConfirmed, uploads,
     });
     setLoading(true);
@@ -574,14 +585,14 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   };
 
   // Save current location inspection to Cloudflare D1
-  const handleSaveInspection = async (items = skuList, empty = isEmptyConfirmed, notes = locationNotes, linkedPhotos = photos, reset = false) => {
-    if (!locData || saving || photoBusy || photoFailed || uploadingSurplusPhoto) return;
+  const handleSaveInspection = async (items = skuList, empty = isEmptyConfirmed, notes = locationNotes, linkedPhotos = photos, reset = false, auto = false) => {
+    if (!locData || saving || photoBusy || photoFailed || uploadingSurplusPhoto) return false;
 
     // Check if all SKUs have been verified
     const unverifiedCount = items.filter((s) => s.actualQty === null || s.actualQty === undefined).length;
-    if (unverifiedCount > 0 && !empty) {
+    if (unverifiedCount > 0 && !empty && !auto) {
       const confirmSave = confirm(`${t('unverifiedCountPrefix')} ${unverifiedCount} ${t('unverifiedConfirmSuffix')}`);
-      if (!confirmSave) return;
+      if (!confirmSave) return false;
     }
 
     setSaving(true);
@@ -629,29 +640,61 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
         notes, completedAt: incomplete ? null : saved.savedAt, photos: linkedPhotos,
       } };
       const key = locationKey(locData.hallId, locData.locationCode, locData.referenceImportId);
-      locationDrafts.set(key, { data: savedData, skus: items, photos: linkedPhotos,
-        notes, empty, uploads: [],
-      });
-      if (activeKey.current !== key) return;
+      const persistedSignature = JSON.stringify([key, items, empty, notes,
+        linkedPhotos.map(p => [p.photoId, p.objectKey, p.sku])]);
+      const newerDraftExists = auto && latestDraftSignature.current !== persistedSignature;
+      if (!newerDraftExists) {
+        locationDrafts.set(key, { data: savedData, skus: items, photos: linkedPhotos,
+          notes, empty, uploads: [],
+        });
+      }
+      if (activeKey.current !== key) return true;
       setLocData(savedData);
-      setSkuList(items);
-      setPhotos(linkedPhotos);
-      setLocationNotes(notes);
-      setIsEmptyConfirmed(empty);
-      setUploads([]);
+      if (!auto) {
+        setSkuList(items);
+        setPhotos(linkedPhotos);
+        setLocationNotes(notes);
+        setIsEmptyConfirmed(empty);
+        setUploads([]);
+      }
       setSaveSuccessMsg(incomplete ? t('draftSaved') : t('saved'));
       triggerHaptic(true);
       // IME-based PDA scanners need an editable target after the save button took focus.
       if (androidScanner) focusScanner();
+      return true;
 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setErrorMsg(`${t('saveFailed')}: ${msg}`);
       triggerHaptic(false);
+      return false;
     } finally {
       setSaving(false);
     }
   };
+
+  // Autosave only changed, settled snapshots. Each write is serialized by saving;
+  // a later edit remains on screen and will be persisted by the next debounce cycle.
+  const saveKey = locData ? locationKey(locData.hallId, locData.locationCode, locData.referenceImportId) : '';
+  const currentSignature = locData ? JSON.stringify([saveKey, skuList, isEmptyConfirmed, locationNotes,
+    photos.map(p => [p.photoId, p.objectKey, p.sku])]) : '';
+  latestDraftSignature.current = currentSignature;
+  const savedSignature = locData ? JSON.stringify([saveKey, locData.skus, Boolean(locData.inspection?.isEmptyConfirmed), locData.inspection?.notes || '', (locData.inspection?.photos || []).map(p => [p.photoId, p.objectKey, p.sku])]) : '';
+  unsavedAutoChanges.current = Boolean(locData && currentSignature !== savedSignature);
+  useEffect(() => {
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    if (!locData) { unsavedAutoChanges.current = false; return; }
+    if (saving || loading || photoBusy || photoFailed || uploadingSurplusPhoto || uploadsInFlight.current > 0
+      || shortageModalSku || showSurplusModal) return;
+    const baseline = JSON.stringify([saveKey, locData.skus, Boolean(locData.inspection?.isEmptyConfirmed),
+      locData.inspection?.notes || '', (locData.inspection?.photos || []).map(p => [p.photoId, p.objectKey, p.sku])]);
+    if (currentSignature === baseline || currentSignature === lastAutoAttempt.current) return;
+    autoSaveTimer.current = setTimeout(() => {
+      lastAutoAttempt.current = currentSignature;
+      void handleSaveInspection(skuList, isEmptyConfirmed, locationNotes, photos, false, true);
+    }, 800);
+    return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current); };
+  }, [currentSignature, locData, saving, loading, photoBusy, photoFailed, uploadingSurplusPhoto, shortageModalSku, showSurplusModal]);
 
   return (
     <div className="max-w-2xl mx-auto px-2 sm:px-4 py-3 space-y-3 font-sans pb-24">
