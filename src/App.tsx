@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { registerLanguageSafety } from './i18n/safety';
 import { Header } from './components/Header';
-import { LocationInspectionPage } from './pages/LocationInspectionPage';
+import { LocationInspectionPage, hasUnsavedInspectionDrafts } from './pages/LocationInspectionPage';
 import { DeviceTestPage } from './pages/DeviceTestPage';
 import { ArchitecturePage } from './pages/ArchitecturePage';
 import { WMSImportPage } from './pages/WMSImportPage';
@@ -8,6 +9,10 @@ import { InspectionExportPage } from './pages/InspectionExportPage';
 import { HallId } from './types';
 
 export const App: React.FC = () => {
+  useEffect(() => registerLanguageSafety('cached-inspection-drafts', {
+    dirty: hasUnsavedInspectionDrafts,
+    busy: () => false,
+  }), []);
   const [currentHall, setCurrentHall] = useState<HallId>('H1');
   const [activeView, setActiveView] = useState<'inspect' | 'test' | 'import' | 'export' | 'arch'>('inspect');
 
