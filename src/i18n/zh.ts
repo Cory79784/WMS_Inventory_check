@@ -264,7 +264,7 @@ export const zh = {
   siteTitle: "海外仓 PDA 库存核查",
   locationRemarkLabel: "库位备注（正常及异常均可填写）",
   locationRemarkPlaceholder: "如：货物损坏、无 SKU 标签、未覆盖快递面单、货架损坏等特殊情况",
-  photoUploadPendingHint: "照片已上传，仍需点击“保存本库位核查”才能保存照片关联。",
+  photoUploadPendingHint: "照片上传成功，核查记录正在自动保存。",
   photoUnsavedBadge: "照片等待保存",
   exitConfirm: "是否退出库存核查系统？",
   exitUnsavedConfirm: "有未保存的核查记录。退出后未保存内容将丢失，确定退出？",
