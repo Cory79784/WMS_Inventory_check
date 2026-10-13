@@ -34,6 +34,7 @@ interface PhotoUpload {
   progress: number;
   status: 'uploading' | 'saved' | 'error';
   sku?: string;
+  previewUrl?: string;
 }
 interface LocationDraft {
   data: LocationAuditData;
@@ -540,8 +541,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
         (progress) => update({ progress }));
       // Original file stays intact. A local blob URL makes newly captured photos
       // visible immediately, even if the private R2 GET is temporarily unavailable.
-      const localPreview = typeof URL.createObjectURL === 'function'
-        ? URL.createObjectURL(task.file) : result.previewUrl;
+      const localPreview = task.previewUrl || result.previewUrl;
       update({ status: 'saved', progress: 100 }, {
         photoId: result.photoId, objectKey: result.objectKey,
         previewUrl: localPreview, sku: task.sku || undefined,
@@ -560,6 +560,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     if (!locData || uploadsInFlight.current) return;
     const tasks: PhotoUpload[] = files.map((file) => ({
       id: crypto.randomUUID(), file, progress: 0, status: 'uploading', sku: photoTargetSku || undefined,
+      previewUrl: typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : undefined,
     }));
     const key = locationKey(locData.hallId, locData.locationCode, locData.referenceImportId);
     locationDrafts.set(key, {
@@ -1085,7 +1086,10 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             {uploads.map((upload) => (
               <div key={upload.id} className="text-xs text-slate-600 space-y-1">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate">{upload.file.name}</span>
+                  <span className="flex items-center gap-2 min-w-0">
+                    {upload.status !== 'saved' && upload.previewUrl && <img src={upload.previewUrl} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />}
+                    <span className="truncate">{upload.file.name}</span>
+                  </span>
                   {upload.status === 'error' ? (
                     <button type="button" disabled={photoBusy || saving} onClick={() => uploadPhoto(upload)} className="text-blue-600 shrink-0">{t('retry')}</button>
                   ) : <span className="shrink-0">{upload.status === 'saved' ? t('photoUnsavedBadge') : `${t('photoUploading')} ${upload.progress}%${upload.progress === 100 ? t('uploadWaiting') : ''}`}</span>}
