@@ -264,7 +264,7 @@ export const vi: Record<TranslationKey, string> = {
   siteTitle: "Kiểm kê kho PDA",
   locationRemarkLabel: "Ghi chú vị trí (áp dụng cả khi bình thường và bất thường)",
   locationRemarkPlaceholder: "Ví dụ: hàng hư hỏng, thiếu nhãn SKU, chưa che nhãn vận đơn, kệ hư hỏng hoặc vấn đề đặc biệt khác",
-  photoUploadPendingHint: "Ảnh đã tải lên. Nhấn “Lưu kiểm kê vị trí” để lưu liên kết ảnh với lượt kiểm kê.",
+  photoUploadPendingHint: "Ảnh đã tải lên, liên kết với lượt kiểm kê đang được tự động lưu.",
   photoUnsavedBadge: "Ảnh chờ lưu",
   exitConfirm: "Bạn có muốn thoát hệ thống kiểm kê không?",
   exitUnsavedConfirm: "Có dữ liệu kiểm kê chưa lưu. Dữ liệu đó sẽ mất khi thoát. Bạn có muốn tiếp tục?",
