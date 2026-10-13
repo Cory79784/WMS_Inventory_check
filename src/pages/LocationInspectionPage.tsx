@@ -657,7 +657,6 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (auto) lastAutoAttempt.current = '';
       setErrorMsg(`${t('saveFailed')}: ${msg}`);
       triggerHaptic(false);
     } finally {
@@ -671,6 +670,8 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   const currentSignature = locData ? JSON.stringify([saveKey, skuList, isEmptyConfirmed, locationNotes,
     photos.map(p => [p.photoId, p.objectKey, p.sku])]) : '';
   latestDraftSignature.current = currentSignature;
+  const savedSignature = locData ? JSON.stringify([saveKey, locData.skus, Boolean(locData.inspection?.isEmptyConfirmed), locData.inspection?.notes || '', (locData.inspection?.photos || []).map(p => [p.photoId, p.objectKey, p.sku])]) : '';
+  unsavedAutoChanges.current = Boolean(locData && currentSignature !== savedSignature);
   useEffect(() => {
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     if (!locData) { unsavedAutoChanges.current = false; return; }
@@ -678,8 +679,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       || shortageModalSku || showSurplusModal) return;
     const baseline = JSON.stringify([saveKey, locData.skus, Boolean(locData.inspection?.isEmptyConfirmed),
       locData.inspection?.notes || '', (locData.inspection?.photos || []).map(p => [p.photoId, p.objectKey, p.sku])]);
-    unsavedAutoChanges.current = currentSignature !== baseline;
-    if (!unsavedAutoChanges.current || currentSignature === lastAutoAttempt.current) return;
+    if (currentSignature === baseline || currentSignature === lastAutoAttempt.current) return;
     autoSaveTimer.current = setTimeout(() => {
       lastAutoAttempt.current = currentSignature;
       void handleSaveInspection(skuList, isEmptyConfirmed, locationNotes, photos, false, true);
