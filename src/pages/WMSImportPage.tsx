@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import React, { useState, useEffect, useRef } from 'react';
 import { registerLanguageSafety } from '../i18n/safety';
 import * as XLSX from 'xlsx';
@@ -594,10 +595,10 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
                 <tr className="border-b border-slate-200 text-slate-400 text-[11px]">
                   <th className="py-2 px-2">版本</th>
                   <th className="py-2 px-2">原始文件名</th>
-                  <th className="py-2 px-2">导入时间 (UTC)</th>
+                  <th className="py-2 px-2">{t('dataImported')}</th>
                   <th className="py-2 px-2">账面库位</th>
                   <th className="py-2 px-2">SKU 数</th>
-                  <th className="py-2 px-2">总库存</th>
+                  <th className="py-2 px-2">{t('totalQuantity')}</th>
                   <th className="py-2 px-2">状态</th>
                 </tr>
               </thead>
