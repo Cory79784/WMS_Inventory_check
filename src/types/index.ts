@@ -75,6 +75,7 @@ export interface LocationSkuItem {
 export interface InspectionPhotoItem {
   photoId: string;
   objectKey: string;
+  sku?: string;
   previewUrl?: string;
 }
 
