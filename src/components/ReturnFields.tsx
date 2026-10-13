@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import React, { useEffect, useRef, useState } from 'react';
 import { Keyboard } from 'lucide-react';
 import { focusScannerInput, scannerKeyboard } from '../utils/scannerInput';
@@ -20,11 +21,11 @@ export const ReturnFields: React.FC<{
       <label className="flex items-center gap-2 text-slate-700">
         <input type="checkbox" checked={isReturn} disabled={disabled}
           onChange={event => onReturnChange(event.target.checked)} />
-        是否是退货
+        {t('returnGoods')}
       </label>
       {isReturn && (
         <div className="flex items-center gap-2">
-          <input ref={inputRef} type="text" aria-label="退货码或跟踪号"
+          <input ref={inputRef} type="text" aria-label={t("returnCode")}
             value={returnCode} onChange={event => onCodeChange(event.target.value)}
             inputMode={manual ? 'text' : /Android/i.test(navigator.userAgent) ? undefined : 'none'}
             {...{ virtualkeyboardpolicy: !manual && scannerKeyboard() ? 'manual' : 'auto' }}
@@ -32,9 +33,9 @@ export const ReturnFields: React.FC<{
               if (event.key === 'Enter' || event.key === 'Tab') event.preventDefault();
             }}
             disabled={disabled} autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
-            placeholder="扫描退货码或跟踪号（如有）"
+            placeholder={t("scanReturn")}
             className="w-full min-w-0 font-mono border border-slate-300 rounded-lg p-2" />
-          <button type="button" aria-label="手动输入退货码" disabled={disabled}
+          <button type="button" aria-label={t("manualReturn")} disabled={disabled}
             className="text-slate-600 bg-slate-100 p-2 rounded-lg"
             onClick={() => { setManual(true); focusScannerInput(inputRef.current, true); }}>
             <Keyboard className="w-4 h-4" />
