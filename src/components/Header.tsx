@@ -1,4 +1,6 @@
 import React from 'react';
+import { t } from '../i18n';
+import { LanguageSwitcher } from './LanguageSwitcher';
 import { HallId } from '../types';
 import { Warehouse, ClipboardCheck, UploadCloud, Cpu, Download } from 'lucide-react';
 
@@ -20,7 +22,7 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="max-w-3xl mx-auto px-3 py-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Warehouse className="w-5 h-5 text-blue-400" />
-          <span className="font-bold text-sm tracking-tight">PDA 库存核查</span>
+          <span className="font-bold text-sm tracking-tight">{t('warehouse')}</span>
         </div>
 
         {/* Hall Isolation Selector */}
@@ -41,6 +43,7 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             ))}
           </div>
+          <LanguageSwitcher />
         </div>
       </div>
 
@@ -57,7 +60,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <ClipboardCheck className="w-3.5 h-3.5" />
-            库位核查
+            {t('inspect')}
           </button>
           <button
             type="button"
@@ -69,7 +72,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <UploadCloud className="w-3.5 h-3.5" />
-            WMS 导入
+            {t('import')}
           </button>
           <button
             type="button"
@@ -81,7 +84,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <Download className="w-3.5 h-3.5" />
-            导出
+            {t('export')}
           </button>
           <button
             type="button"
@@ -93,12 +96,12 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <Cpu className="w-3.5 h-3.5" />
-            测试
+            {t('deviceTest')}
           </button>
         </div>
 
         <span className="text-[10px] text-slate-400 hidden sm:inline">
-          {currentHall} 区域数据隔离
+          {currentHall} {t('isolation')}
         </span>
       </div>
     </header>
