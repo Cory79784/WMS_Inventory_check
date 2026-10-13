@@ -753,7 +753,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
               className="flex items-center gap-1 px-3 py-1 rounded bg-slate-100 disabled:opacity-30">
               <ChevronUp className="w-5 h-5" /> {verticalLocation(-1) || '—'}
             </button>
-            <button type="button" aria-label="下一排库位" onPointerDown={keepScannerFocus}
+            <button type="button" aria-label={t('rowDown')} onPointerDown={keepScannerFocus}
               disabled={loading || saving || photoBusy || !verticalLocation(1)}
               onClick={() => { const code = verticalLocation(1); if (code) handleQueryLocation(code); }}
               className="flex items-center gap-1 px-3 py-1 rounded bg-slate-100 disabled:opacity-30">
@@ -767,7 +767,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             <button
               type="button"
               onPointerDown={keepScannerFocus}
-              aria-label="上一库位"
+              aria-label={t('previous')}
               disabled={loading || saving || photoBusy || !locData.navigation.prevLocationCode}
               onClick={() => locData.navigation.prevLocationCode && handleQueryLocation(locData.navigation.prevLocationCode)}
               className="flex flex-col sm:flex-row items-center gap-1 p-2 rounded bg-slate-100 text-slate-700 disabled:opacity-30 active:bg-slate-200"
@@ -779,7 +779,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             <button
               type="button"
               onPointerDown={keepScannerFocus}
-              aria-label="下一库位"
+              aria-label={t('next')}
               disabled={loading || saving || photoBusy || !locData.navigation.nextLocationCode}
               onClick={() => locData.navigation.nextLocationCode && handleQueryLocation(locData.navigation.nextLocationCode)}
               className="flex flex-col-reverse sm:flex-row items-center gap-1 p-2 rounded bg-slate-100 text-slate-700 disabled:opacity-30 active:bg-slate-200"
@@ -967,15 +967,15 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                       <div className="text-sm font-bold text-slate-800 font-mono">{item.systemQty}</div>
                     </div>
                     <div className="bg-slate-50 rounded p-1">
-                      <div className="text-[10px] text-slate-400">可用</div>
+                      <div className="text-[10px] text-slate-400">{t('available')}</div>
                       <div className="text-xs font-semibold text-slate-700 font-mono">{item.availableQty}</div>
                     </div>
                     <div className="bg-slate-50 rounded p-1">
-                      <div className="text-[10px] text-slate-400">待出</div>
+                      <div className="text-[10px] text-slate-400">{t('allocated')}</div>
                       <div className="text-xs font-semibold text-slate-700 font-mono">{item.allocatedQty}</div>
                     </div>
                     <div className="bg-slate-50 rounded p-1">
-                      <div className="text-[10px] text-slate-400">冻结</div>
+                      <div className="text-[10px] text-slate-400">{t('frozen')}</div>
                       <div className="text-xs font-semibold text-slate-700 font-mono">{item.frozenQty}</div>
                     </div>
                     <div className={`rounded p-1 ${item.actualQty !== null ? 'bg-blue-50 text-blue-900' : 'bg-slate-50 text-slate-400'}`}>
@@ -993,7 +993,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                         ? 'bg-emerald-50 text-emerald-800'
                         : 'bg-slate-50 text-slate-400'
                     }`}>
-                      <div className="text-[10px]">盘差</div>
+                      <div className="text-[10px]">{t('difference')}</div>
                       <div className="text-sm font-mono font-bold">
                         {item.differenceQty !== null ? (item.differenceQty > 0 ? `+${item.differenceQty}` : item.differenceQty) : '-'}
                       </div>
@@ -1070,7 +1070,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate">{upload.file.name}</span>
                   {upload.status === 'error' ? (
-                    <button type="button" disabled={photoBusy || saving} onClick={() => uploadPhoto(upload)} className="text-blue-600 shrink-0">重试</button>
+                    <button type="button" disabled={photoBusy || saving} onClick={() => uploadPhoto(upload)} className="text-blue-600 shrink-0">{t('retry')}</button>
                   ) : <span className="shrink-0">{upload.status === 'saved' ? '已保存' : `上传中 ${upload.progress}%${upload.progress === 100 ? '（等待保存）' : ''}`}</span>}
                 </div>
                 {upload.status === 'uploading' && <progress aria-label="照片上传进度" max={100} value={upload.progress} className="w-full h-2" />}
