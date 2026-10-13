@@ -560,7 +560,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     if (!locData || uploadsInFlight.current) return;
     const tasks: PhotoUpload[] = files.map((file) => ({
       id: crypto.randomUUID(), file, progress: 0, status: 'uploading', sku: photoTargetSku || undefined,
-      previewUrl: typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : undefined,
+      previewUrl: (() => { try { return URL.createObjectURL(file); } catch { return undefined; } })(),
     }));
     const key = locationKey(locData.hallId, locData.locationCode, locData.referenceImportId);
     locationDrafts.set(key, {
