@@ -310,7 +310,7 @@ export const DeviceTestPage: React.FC = () => {
             <Smartphone className="w-5 h-5 text-brand-600" />
             <div>
               <h1 className="text-base font-bold text-slate-800">
-                Phase 0: PDA 设备与技术可行性验证
+                {t('deviceTitle')}
               </h1>
               <p className="text-xs text-slate-500">
                 {isAndroid ? t('androidFound') : t('desktopFound')}
@@ -326,7 +326,7 @@ export const DeviceTestPage: React.FC = () => {
             ) : (
               <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 font-medium border border-rose-200">
                 <WifiOff className="w-3.5 h-3.5" />
-                网络中断
+                {t('networkDown')}
               </span>
             )}
           </div>
@@ -344,7 +344,7 @@ export const DeviceTestPage: React.FC = () => {
           }`}
         >
           <Barcode className="w-4 h-4" />
-          PDA 扫码测试
+          {t('scannerTest')}
         </button>
         <button
           onClick={() => {
@@ -358,7 +358,7 @@ export const DeviceTestPage: React.FC = () => {
           }`}
         >
           <Camera className="w-4 h-4" />
-          PDA 相机与 R2
+          {t('cameraTest')}
         </button>
         <button
           onClick={() => {
@@ -372,7 +372,7 @@ export const DeviceTestPage: React.FC = () => {
           }`}
         >
           <Database className="w-4 h-4" />
-          D1 读写与多机
+          {t('d1Test')}
         </button>
         <button
           onClick={() => setActiveTab('network')}
@@ -383,7 +383,7 @@ export const DeviceTestPage: React.FC = () => {
           }`}
         >
           <Layers className="w-4 h-4" />
-          离线与安全
+          {t('offlineTest')}
         </button>
       </div>
 
@@ -394,7 +394,7 @@ export const DeviceTestPage: React.FC = () => {
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
                 <Barcode className="w-4 h-4 text-brand-600" />
-                Keyboard Wedge 扫码捕获
+                {t('wedgeTest')}
               </h2>
               <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
                 <input
@@ -403,7 +403,7 @@ export const DeviceTestPage: React.FC = () => {
                   onChange={(e) => setContinuousScan(e.target.checked)}
                   className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                 />
-                连续扫码保持焦点
+                {t('focusTest')}
               </label>
             </div>
 
@@ -465,7 +465,7 @@ export const DeviceTestPage: React.FC = () => {
                   onClick={() => setScanEvents([])}
                   className="text-xs text-slate-400 hover:text-slate-600 underline"
                 >
-                  清空日志
+                  {t('clearLog')}
                 </button>
               )}
             </div>
@@ -521,12 +521,12 @@ export const DeviceTestPage: React.FC = () => {
 
                       {evt.detectedEnter && (
                         <span className="bg-slate-200 text-slate-700 px-1 rounded">
-                          Enter 结束符
+                          {t('endEnter')}
                         </span>
                       )}
                       {evt.detectedTab && (
                         <span className="bg-slate-200 text-slate-700 px-1 rounded">
-                          Tab 结束符
+                          {t('endTab')}
                         </span>
                       )}
                     </div>
@@ -544,7 +544,7 @@ export const DeviceTestPage: React.FC = () => {
           <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 space-y-3">
             <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
               <Camera className="w-4 h-4 text-brand-600" />
-              PDA 原生相机与 R2 私有存储验证
+              {t('cameraTitle')}
             </h2>
             <p className="text-xs text-slate-500 leading-relaxed">
               测试浏览器唤起后置摄像头拍照能力，验证照片二进制数据能否直接上传至 Cloudflare R2 私有 Bucket。
@@ -602,7 +602,7 @@ export const DeviceTestPage: React.FC = () => {
                 <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 space-y-1">
                   <div className="font-bold flex items-center gap-1">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    云端已成功保存 (Cloudflare R2)
+                    {t('r2Saved')}
                   </div>
                   <div className="font-mono text-[11px] break-all">
                     Key: {uploadResultKey}
@@ -614,7 +614,7 @@ export const DeviceTestPage: React.FC = () => {
                 <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-800 space-y-1">
                   <div className="font-bold flex items-center gap-1">
                     <AlertTriangle className="w-4 h-4 text-rose-600" />
-                    R2 上传失败
+                    {t('r2Failed')}
                   </div>
                   <p>{cameraError}</p>
                 </div>
@@ -634,7 +634,7 @@ export const DeviceTestPage: React.FC = () => {
                 className="text-xs text-brand-600 hover:text-brand-800 flex items-center gap-1"
               >
                 <RotateCw className="w-3 h-3" />
-                刷新
+                {t('refresh')}
               </button>
             </div>
 
@@ -668,7 +668,7 @@ export const DeviceTestPage: React.FC = () => {
           <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 space-y-3">
             <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
               <Database className="w-4 h-4 text-brand-600" />
-              Cloudflare D1 数据库读写验证
+              {t('d1Title')}
             </h2>
 
             {healthData && (
@@ -691,7 +691,7 @@ export const DeviceTestPage: React.FC = () => {
             {/* Manual Write Test Form */}
             <div className="space-y-2 pt-1 border-t border-slate-100">
               <span className="text-xs font-semibold text-slate-700 block">
-                写入一条 D1 测试记录
+                {t('writeD1')}
               </span>
               <div className="grid grid-cols-2 gap-2">
                 <input
@@ -731,7 +731,7 @@ export const DeviceTestPage: React.FC = () => {
           <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700">
-                云端 D1 最新诊断记录 (多机验证)
+                {t('cloudD1')}
               </span>
               <button
                 type="button"
@@ -739,7 +739,7 @@ export const DeviceTestPage: React.FC = () => {
                 className="text-xs text-brand-600 hover:text-brand-800 flex items-center gap-1"
               >
                 <RotateCw className="w-3 h-3" />
-                刷新
+                {t('refresh')}
               </button>
             </div>
             <p className="text-[11px] text-slate-500">
@@ -774,7 +774,7 @@ export const DeviceTestPage: React.FC = () => {
           <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 space-y-3">
             <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
               <Wifi className="w-4 h-4 text-brand-600" />
-              网络中断保护与待同步队列 (IndexedDB 模式)
+              {t('offlineTitle')}
             </h2>
             <p className="text-xs text-slate-500 leading-relaxed">
               现场 Wi-Fi 偶发中断时，数据不会静默丢弃。输入暂存入本地待同步队列，网络恢复后安全提交。
@@ -794,7 +794,7 @@ export const DeviceTestPage: React.FC = () => {
                   onClick={handleQueueOfflineItem}
                   className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-medium"
                 >
-                  暂存本地队列
+                  {t('queueLocally')}
                 </button>
               </div>
 
@@ -808,7 +808,7 @@ export const DeviceTestPage: React.FC = () => {
                       disabled={d1Loading || !isOnline}
                       className="px-2.5 py-1 bg-amber-700 text-white rounded text-xs disabled:opacity-50"
                     >
-                      立即同步到云端
+                      {t('syncNow')}
                     </button>
                   </div>
 
@@ -829,7 +829,7 @@ export const DeviceTestPage: React.FC = () => {
           <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 space-y-2">
             <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
               <ShieldCheck className="w-4 h-4 text-brand-600" />
-              Cloudflare Access 身份鉴权验证
+              {t('accessTitle')}
             </h2>
             <div className="p-2.5 bg-slate-50 border border-slate-200 rounded text-xs space-y-1">
               <div className="flex justify-between">
