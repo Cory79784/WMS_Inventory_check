@@ -31,6 +31,7 @@ interface PhotoUpload {
   file: File;
   progress: number;
   status: 'uploading' | 'saved' | 'error';
+  sku?: string;
 }
 interface LocationDraft {
   data: LocationAuditData;
@@ -84,6 +85,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   // Editable inspection state for current location
   const [skuList, setSkuList] = useState<LocationSkuItem[]>([]);
   const [photos, setPhotos] = useState<InspectionPhotoItem[]>([]);
+  const [photoTargetSku, setPhotoTargetSku] = useState('');
   const [locationNotes, setLocationNotes] = useState('');
   const [isEmptyConfirmed, setIsEmptyConfirmed] = useState(false);
 
@@ -446,6 +448,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
               photoId: uploadedPhotoInfo.photoId,
               objectKey: uploadedPhotoInfo.objectKey,
               previewUrl: uploadedPhotoInfo.previewUrl,
+              sku: surplusMode === 'SKU' ? surplusSkuInput.trim() : (surplusMode === 'BARCODE' ? `条码:${surplusBarcodeInput.trim()}` : '无SKU未知品'),
             },
           ]);
         }
@@ -517,6 +520,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
         (progress) => update({ progress }));
       update({ status: 'saved', progress: 100 }, {
         photoId: result.photoId, objectKey: result.objectKey, previewUrl: result.previewUrl,
+        sku: task.sku || undefined,
       });
       triggerHaptic(true);
     } catch (error) {
@@ -531,7 +535,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   const handleLocationPhotoUpload = async (files: File[]) => {
     if (!locData || uploadsInFlight.current) return;
     const tasks: PhotoUpload[] = files.map((file) => ({
-      id: crypto.randomUUID(), file, progress: 0, status: 'uploading',
+      id: crypto.randomUUID(), file, progress: 0, status: 'uploading', sku: photoTargetSku || undefined,
     }));
     const key = locationKey(locData.hallId, locData.locationCode, locData.referenceImportId);
     locationDrafts.set(key, {
@@ -588,6 +592,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       photos: linkedPhotos.map((p) => ({
         photoId: p.photoId,
         objectKey: p.objectKey,
+        sku: p.sku,
       })),
     };
 
@@ -1031,6 +1036,16 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
               />
             </div>
 
+            <label className="block text-xs text-slate-600">
+              照片关联
+              <select aria-label="照片关联记录" value={photoTargetSku} onChange={event => setPhotoTargetSku(event.target.value)}
+                className="ml-2 border border-slate-300 rounded px-2 py-1 bg-white max-w-full">
+                <option value="">整个库位（正常 / 空库位 / 异常）</option>
+                {skuList.map((item, index) => (
+                  <option key={index} value={item.sku}>{item.sku || '无 SKU 货物'} · {item.discrepancyType || '待核对'}</option>
+                ))}
+              </select>
+            </label>
             {uploads.map((upload) => (
               <div key={upload.id} className="text-xs text-slate-600 space-y-1">
                 <div className="flex items-center justify-between gap-2">
@@ -1046,12 +1061,13 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             {photos.length > 0 && (
               <div className="flex items-center gap-2 overflow-x-auto py-1">
                 {photos.map((p) => (
-                  <div key={p.photoId} className="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 shrink-0">
+                  <div key={p.photoId} className="relative shrink-0 space-y-1">
                     <img
                       src={p.previewUrl || `/api/inventory/inspection/photo?key=${encodeURIComponent(p.objectKey)}`}
                       alt="Inspection"
-                      className="w-full h-full object-cover"
+                      className="w-16 h-16 object-cover rounded-lg border border-slate-200"
                     />
+                    <span className="block text-[10px] truncate max-w-20">{p.sku || '库位照片'}</span>
                   </div>
                 ))}
               </div>
