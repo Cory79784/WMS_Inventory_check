@@ -1,15 +1,20 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Miniflare } from 'miniflare';
 import { build } from 'esbuild';
+import { login, testCredentials, authenticatedFetch } from './helpers/auth';
 
 let mf: Miniflare;
+let request: ReturnType<typeof authenticatedFetch>;
+let sessionCookie: string;
 beforeAll(async () => {
   const bundle = await build({ entryPoints: ['worker/index.ts'], bundle: true, write: false,
     format: 'esm', platform: 'browser', target: 'es2022' });
   mf = new Miniflare({ modules: true, script: bundle.outputFiles[0].text,
     compatibilityDate: '2024-10-11', d1Databases: ['DB'], r2Buckets: ['PHOTO_BUCKET'],
-    bindings: { ENVIRONMENT: 'test' } });
+    bindings: { ENVIRONMENT: 'test', AUTH_CREDENTIALS: testCredentials } });
   await mf.dispatchFetch('http://localhost/api/health');
+  sessionCookie = await login(mf);
+  request = authenticatedFetch(mf, sessionCookie);
   const db = await mf.getD1Database('DB');
   await db.prepare(`INSERT INTO inventory_imports (import_id,hall_id,version_number,original_filename,file_sha256,uploaded_by,status)
     VALUES ('v1','H1',1,'one.xlsx','hash1','test','ARCHIVED'), ('v2','H1',2,'two.xlsx','hash2','test','PUBLISHED')`).run();
@@ -34,7 +39,7 @@ afterAll(async () => { await mf?.dispose(); });
 
 describe('Real local D1/R2 inspection API', () => {
   it('exports only completed actual results, including empty locations and locked reference versions', async () => {
-    const response = await mf.dispatchFetch('http://localhost/api/inventory/inspection/export?hallId=H1&mode=all');
+    const response = await request('http://localhost/api/inventory/inspection/export?hallId=H1&mode=all');
     expect(response.status).toBe(200);
     const { rows } = await response.json() as any;
     expect(rows.map((r: any) => r.sku)).toEqual(['N', 'D', '无sku']);
@@ -42,12 +47,12 @@ describe('Real local D1/R2 inspection API', () => {
     expect(rows[2].isEmptyConfirmed).toBe(1);
     expect(rows.every((r: any) => r.referenceImportId === 'v1' && r.versionNumber === 1)).toBe(true);
   });
-  it('exports only inventory anomalies in differences mode', async () => {
-    const response = await mf.dispatchFetch('http://localhost/api/inventory/inspection/export?hallId=H1&mode=differences');
+  it('exports anomalies and saved notes in differences mode', async () => {
+    const response = await request('http://localhost/api/inventory/inspection/export?hallId=H1&mode=differences');
     const { rows } = await response.json() as any;
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ sku: 'D', systemQty: 10, actualQty: 8, differenceQty: -2 });
-    expect(rows[0].photoKeys).toEqual(['original1.jpg', 'original2.png']);
+    expect(rows).toHaveLength(3);
+    expect(rows[1]).toMatchObject({ sku: 'D', systemQty: 10, actualQty: 8, differenceQty: -2 });
+    expect(rows[1].photoKeys).toEqual(['original1.jpg', 'original2.png']);
   });
   it('writes unchanged original bytes through raw streaming and legacy multipart uploads', async () => {
     const original = Uint8Array.from([137,80,78,71,13,10,26,10,255,0,1,2,3]);
@@ -62,18 +67,18 @@ describe('Real local D1/R2 inspection API', () => {
         ...(multipart ? {} : { headers: { 'Content-Type': 'image/png' } }),
       };
       const response = mode === 'http-stream'
-        ? await fetch(new URL(path, await mf.ready), options)
-        : await mf.dispatchFetch(`http://localhost${path}`, options);
+        ? await fetch(new URL(path, await mf.ready), { ...options, headers: { ...options.headers, Cookie: sessionCookie, Origin: (await mf.ready).origin } })
+        : await request(`http://localhost${path}`, options);
       expect(response.status, await response.clone().text()).toBe(200);
       const photo = await response.json() as any;
       expect(photo.objectKey).toMatch(/\.png$/);
-      const downloaded = await mf.dispatchFetch(`http://localhost${photo.previewUrl}`);
+      const downloaded = await request(`http://localhost${photo.previewUrl}`);
       expect(downloaded.headers.get('Content-Type')).toBe('image/png');
       expect(new Uint8Array(await downloaded.arrayBuffer())).toEqual(original);
     }
   });
   it('marks incomplete saves as incomplete and keeps them out of export', async () => {
-    const response = await mf.dispatchFetch('http://localhost/api/inventory/inspection/save', {
+    const response = await request('http://localhost/api/inventory/inspection/save', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ hallId: 'H1', locationCode: '109-032-1', status: 'IN_PROGRESS', skus: [] }),
     });
@@ -82,17 +87,17 @@ describe('Real local D1/R2 inspection API', () => {
     const db = await mf.getD1Database('DB');
     expect((await db.prepare('SELECT completed_at FROM location_inspections WHERE inspection_id = ?')
       .bind(saved.inspectionId).first())?.completed_at).toBeNull();
-    const exported = await (await mf.dispatchFetch('http://localhost/api/inventory/inspection/export?hallId=H1&mode=all')).json() as any;
+    const exported = await (await request('http://localhost/api/inventory/inspection/export?hallId=H1&mode=all')).json() as any;
     expect(exported.rows).toHaveLength(3);
   });
   it('returns saved photo keys in the existing frontend shape after reloading', async () => {
-    const response = await mf.dispatchFetch('http://localhost/api/inventory/inspection/save', {
+    const response = await request('http://localhost/api/inventory/inspection/save', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ hallId: 'H1', locationCode: '109-033-1', status: 'VERIFIED',
         isEmptyConfirmed: true, skus: [], photos: [{ photoId: 'reload-photo', objectKey: 'original.png' }] }),
     });
     expect(response.status).toBe(200);
-    const reloaded = await (await mf.dispatchFetch('http://localhost/api/inventory/location?hallId=H1&locationCode=109-033-1')).json() as any;
+    const reloaded = await (await request('http://localhost/api/inventory/location?hallId=H1&locationCode=109-033-1')).json() as any;
     expect(reloaded.data.importedAt).toBeTruthy();
     expect(reloaded.data.inspection.photos).toEqual([{ photoId: 'reload-photo', objectKey: 'original.png' }]);
     expect(reloaded.data.navigation.prevLocationCode).toBe('109-032-1');
@@ -103,11 +108,11 @@ describe('Real local D1/R2 inspection API', () => {
     await db.prepare(`INSERT INTO inventory_stock_rows (id,import_id,hall_id,location_code,sku,system_qty)
       VALUES ('a1','v2','H1','109-040-1','A',2),('a2','v2','H1','109-040-1','A',3),
         ('b1','v2','H1','109-040-1','B',4),('c1','v2','H1','109-040-1','C',5)`).run();
-    const result = await (await mf.dispatchFetch('http://localhost/api/inventory/location?hallId=H1&locationCode=109-040-1')).json() as any;
+    const result = await (await request('http://localhost/api/inventory/location?hallId=H1&locationCode=109-040-1')).json() as any;
     expect(result.data.skus.map((sku: any) => [sku.sku, sku.systemQty])).toEqual([['A',5],['B',4],['C',5]]);
   });
   it('updates the same inspection on repeated saves instead of adding another result', async () => {
-    const save = async (actualQty: number) => (await (await mf.dispatchFetch('http://localhost/api/inventory/inspection/save', {
+    const save = async (actualQty: number) => (await (await request('http://localhost/api/inventory/inspection/save', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
         hallId: 'H1', locationCode: '109-040-1', referenceImportId: 'v2', status: 'VERIFIED',
         skus: [{ sku: 'A', systemQty: 5, actualQty, differenceQty: actualQty-5, discrepancyType: actualQty===5?'NORMAL':'SHORTAGE' }],
@@ -128,12 +133,12 @@ describe('Real local D1/R2 inspection API', () => {
     const db = await mf.getD1Database('DB');
     await db.prepare(`INSERT INTO inventory_stock_rows (id,import_id,hall_id,location_code,sku,system_qty)
       VALUES ('new-n','v2','H1','109-027-1','N',20)`).run();
-    const result = await (await mf.dispatchFetch('http://localhost/api/inventory/location?hallId=H1&locationCode=109-027-1')).json() as any;
+    const result = await (await request('http://localhost/api/inventory/location?hallId=H1&locationCode=109-027-1')).json() as any;
     expect(result.data.referenceImportId).toBe('v2');
     expect(result.data.inspection).toBeNull();
     expect(result.data.skus[0]).toMatchObject({ systemQty: 20, actualQty: null });
     expect(result.data.lastInspection).toMatchObject({ versionNumber: 1, completedAt: '2026-10-11' });
-    const staleSave = await mf.dispatchFetch('http://localhost/api/inventory/inspection/save', {
+    const staleSave = await request('http://localhost/api/inventory/inspection/save', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ hallId: 'H1', locationCode: '109-027-1', referenceImportId: 'v1', skus: [] }),
     });
@@ -149,7 +154,7 @@ describe('Real local D1/R2 inspection API', () => {
       ('id3','identifiers','无SKU未知品',NULL,0,1,1,'NO_SKU_SURPLUS')`).run();
     await db.prepare("INSERT INTO inspection_photos (photo_id,inspection_id,object_key) VALUES ('unknown-photo','identifiers','original.png')").run();
     for (const mode of ['all', 'differences']) {
-      const exported = await (await mf.dispatchFetch(`http://localhost/api/inventory/inspection/export?hallId=H1&mode=${mode}`)).json() as any;
+      const exported = await (await request(`http://localhost/api/inventory/inspection/export?hallId=H1&mode=${mode}`)).json() as any;
       const rows = exported.rows.filter((r: any) => r.inspectionId === 'identifiers');
       expect(rows.map((r: any) => [r.sku,r.barcode])).toEqual([['ONLY-SKU',''],['','123456'],['无sku','']]);
       expect(rows.every((r: any) => r.photoKeys[0] === 'original.png')).toBe(true);
@@ -168,20 +173,20 @@ describe('Real local D1/R2 inspection API', () => {
           notes: '退货多货备注', isReturn: true, returnCode: '0001234567' },
       ] };
     const save = async (body: any) => {
-      const response = await mf.dispatchFetch('http://localhost/api/inventory/inspection/save', {
+      const response = await request('http://localhost/api/inventory/inspection/save', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       expect(response.status).toBe(200);
       return response.json() as any;
     };
     const saved = await save(payload);
-    const reload = async () => (await (await mf.dispatchFetch('http://localhost/api/inventory/location?hallId=H1&locationCode=109-060-1')).json() as any).data;
+    const reload = async () => (await (await request('http://localhost/api/inventory/location?hallId=H1&locationCode=109-060-1')).json() as any).data;
     expect((await reload()).skus).toEqual(expect.arrayContaining([
       expect.objectContaining({ sku: 'RETURN-BOOK', notes: '少货备注', isReturn: true, returnCode: '000SHORT' }),
       expect.objectContaining({ sku: 'RETURN-EXTRA', nameZh: '退货多货备注', isReturn: true, returnCode: '0001234567' }),
     ]));
     for (const mode of ['all', 'differences']) {
-      const result = await (await mf.dispatchFetch(`http://localhost/api/inventory/inspection/export?hallId=H1&mode=${mode}`)).json() as any;
+      const result = await (await request(`http://localhost/api/inventory/inspection/export?hallId=H1&mode=${mode}`)).json() as any;
       const rows = result.rows.filter((row: any) => row.inspectionId === saved.inspectionId);
       expect(rows).toHaveLength(2);
       expect(rows.map((row: any) => row.returnCode).sort()).toEqual(['0001234567', '000SHORT']);
@@ -195,7 +200,7 @@ describe('Real local D1/R2 inspection API', () => {
     const db = await mf.getD1Database('DB');
     await db.prepare(`INSERT INTO inventory_stock_rows (id,import_id,hall_id,location_code,sku,system_qty)
       VALUES ('same-return-book','v2','H1','109-061-1','SHARED-SKU',10)`).run();
-    const response = await mf.dispatchFetch('http://localhost/api/inventory/inspection/save', {
+    const response = await request('http://localhost/api/inventory/inspection/save', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ hallId: 'H1', locationCode: '109-061-1', referenceImportId: 'v2', status: 'PENDING_REVIEW', skus: [
         { sku: 'SHARED-SKU', systemQty: 10, actualQty: 10, differenceQty: 0, discrepancyType: 'NORMAL' },
@@ -203,7 +208,7 @@ describe('Real local D1/R2 inspection API', () => {
       ] }),
     });
     expect(response.status).toBe(200);
-    const result = await (await mf.dispatchFetch('http://localhost/api/inventory/location?hallId=H1&locationCode=109-061-1')).json() as any;
+    const result = await (await request('http://localhost/api/inventory/location?hallId=H1&locationCode=109-061-1')).json() as any;
     expect(result.data.skus).toHaveLength(2);
     expect(result.data.skus[0]).toMatchObject({ sku: 'SHARED-SKU', systemQty: 10, actualQty: 10, discrepancyType: 'NORMAL' });
     expect(result.data.skus[1]).toMatchObject({ sku: 'SHARED-SKU', systemQty: 0, actualQty: 2, isReturn: true, returnCode: 'SHARED-RET' });
@@ -215,18 +220,18 @@ describe('Real local D1/R2 inspection API', () => {
       actualQty: 1, differenceQty: discrepancyType === 'SHORTAGE' ? -1 : 1, discrepancyType,
       ...(isReturn ? { isReturn: true } : {}),
     })));
-    const response = await mf.dispatchFetch('http://localhost/api/inventory/inspection/save', {
+    const response = await request('http://localhost/api/inventory/inspection/save', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ hallId: 'H1', locationCode: '109-062-1', referenceImportId: 'v2', status: 'PENDING_REVIEW', skus }),
     });
     expect(response.status).toBe(200);
     const saved = await response.json() as any;
-    const reloaded = await (await mf.dispatchFetch('http://localhost/api/inventory/location?hallId=H1&locationCode=109-062-1')).json() as any;
+    const reloaded = await (await request('http://localhost/api/inventory/location?hallId=H1&locationCode=109-062-1')).json() as any;
     expect(reloaded.data.skus).toHaveLength(4);
     expect(reloaded.data.skus.filter((item: any) => item.isReturn)).toHaveLength(2);
     expect(reloaded.data.skus.every((item: any) => item.returnCode === '')).toBe(true);
     for (const mode of ['all', 'differences']) {
-      const exported = await (await mf.dispatchFetch(`http://localhost/api/inventory/inspection/export?hallId=H1&mode=${mode}`)).json() as any;
+      const exported = await (await request(`http://localhost/api/inventory/inspection/export?hallId=H1&mode=${mode}`)).json() as any;
       const rows = exported.rows.filter((row: any) => row.inspectionId === saved.inspectionId);
       expect(rows).toHaveLength(4);
       expect(rows.filter((row: any) => row.isReturn)).toHaveLength(2);
@@ -234,4 +239,46 @@ describe('Real local D1/R2 inspection API', () => {
     }
   });
 
+});
+
+describe('P0 evidence filter on real D1', () => {
+  it('keeps location notes/photos and SKU/return evidence in all four languages, excludes plain normal rows', async () => {
+    const db = await mf.getD1Database('DB');
+    for (const [id, notes, skuNotes, photo] of [
+      ['p0-plain', '   ', ' ', false], ['p0-note', '库位备注', '', false],
+      ['p0-photo', '', '', true], ['p0-sku', '', 'SKU备注', false],
+      ['p0-return', '', '@wms-return-v1:{"notes":"","isReturn":true,"returnCode":"R1"}', false],
+    ] as const) {
+      await db.prepare(`INSERT INTO location_inspections (inspection_id,hall_id,location_code,reference_import_id,status,completed_at,notes)
+        VALUES (?,'H1',?,'v2','VERIFIED','2026-10-13',?)`).bind(id,id,notes).run();
+      await db.prepare(`INSERT INTO sku_inspections (id,inspection_id,sku,system_qty,actual_qty,difference_qty,discrepancy_type,notes)
+        VALUES (?,?,'NORMAL',10,10,0,'NORMAL',?)`).bind(id,id,skuNotes).run();
+      if (photo) {
+        await (await mf.getR2Bucket('PHOTO_BUCKET')).put('p0-original.png', new Uint8Array([1,2,3]));
+        await db.prepare('INSERT INTO inspection_photos (photo_id,inspection_id,object_key) VALUES (?,?,?)').bind(id,id,'p0-original.png').run();
+      }
+    }
+    for (const language of ['zh','de','vi','ar']) {
+      const result = await (await request('http://localhost/api/inventory/inspection/export?hallId=H1&mode=differences', {headers:{'Accept-Language':language}})).json() as any;
+      expect(result.rows.filter((r:any) => r.inspectionId.startsWith('p0-')).map((r:any) => r.inspectionId).sort())
+        .toEqual(['p0-note','p0-photo','p0-return','p0-sku']);
+      expect(result.rows.find((r:any) => r.inspectionId==='p0-photo').photoKeys).toEqual(['p0-original.png']);
+    }
+    const all = await (await request('http://localhost/api/inventory/inspection/export?hallId=H1&mode=all')).json() as any;
+    expect(all.rows.some((r:any)=>r.inspectionId==='p0-plain')).toBe(true);
+  });
+  it('returns failure and rolls back the save if actual D1 rejects a statement', async () => {
+    const db = await mf.getD1Database('DB');
+    await db.prepare("CREATE TRIGGER p0_fail BEFORE INSERT ON sku_inspections WHEN NEW.sku = 'D1-FAIL' BEGIN SELECT RAISE(ABORT, 'injected D1 failure'); END").run();
+    const response = await request('http://localhost/api/inventory/inspection/save', {
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        hallId:'H1',locationCode:'p0-failure',referenceImportId:'v2',status:'IN_PROGRESS',
+        skus:[{sku:'D1-FAIL',systemQty:10,actualQty:8,differenceQty:-2,discrepancyType:'SHORTAGE'}],
+      }),
+    });
+    expect(response.status).toBe(500);
+    expect((await response.json() as any).success).toBe(false);
+    expect(await db.prepare("SELECT * FROM location_inspections WHERE location_code='p0-failure'").first()).toBeNull();
+    await db.prepare('DROP TRIGGER p0_fail').run();
+  });
 });

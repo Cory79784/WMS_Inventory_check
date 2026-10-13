@@ -111,7 +111,9 @@ export async function saveLocationInspection(payload: any): Promise<any> {
     const errorJson = await res.json().catch(() => ({}));
     throw new Error(errorJson.error || `Failed to save inspection: HTTP ${res.status}`);
   }
-  return res.json();
+  const saved = await res.json();
+  if (saved.success !== true || !saved.savedAt || !saved.inspectionId) throw new Error('Save was not confirmed');
+  return saved;
 }
 
 export async function uploadInspectionPhoto(
@@ -126,6 +128,7 @@ export async function uploadInspectionPhoto(
       if (event.lengthComputable) onProgress?.(Math.round(event.loaded / event.total * 100));
     };
     xhr.onload = () => {
+      if (xhr.status === 401) window.dispatchEvent(new Event('wms-session-expired'));
       try {
         const result = JSON.parse(xhr.responseText);
         if (xhr.status < 200 || xhr.status >= 300 || !result.success) {

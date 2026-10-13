@@ -29,7 +29,7 @@ export async function exportInspectionResults(request: Request, env: Env): Promi
       LEFT JOIN sku_inspections s ON s.inspection_id = l.inspection_id
       WHERE l.hall_id = ? AND l.status IN ('VERIFIED', 'PENDING_REVIEW', 'CLOSED')
         AND l.completed_at IS NOT NULL AND (s.id IS NOT NULL OR l.is_empty_confirmed = 1)
-        ${mode === 'differences' ? "AND (s.difference_qty != 0 OR s.discrepancy_type != 'NORMAL')" : ''}
+
       ORDER BY l.location_code, l.completed_at, s.id
     `).bind(hallId).all<Omit<InspectionExportRow, 'notes' | 'photoKeys'> & {
       locationNotes: string | null; skuNotes: string | null;
@@ -46,7 +46,14 @@ export async function exportInspectionResults(request: Request, env: Env): Promi
       keys.push(photo.object_key);
       photoKeys.set(photo.inspection_id, keys);
     }
-    const rows: InspectionExportRow[] = result.results.map(({ locationNotes, skuNotes, ...row }) => ({
+    const rows: InspectionExportRow[] = result.results.filter(row => {
+      if (mode === 'all') return true;
+      const metadata = decodeInspectionNotes(row.skuNotes);
+      return row.differenceQty !== 0 || Boolean(row.discrepancyType && row.discrepancyType !== 'NORMAL')
+        || Boolean(row.locationNotes?.trim() || metadata.notes.trim() || metadata.isReturn || metadata.returnCode.trim())
+        || Boolean(photoKeys.get(row.inspectionId)?.some(key => key?.trim()))
+        || row.status === 'PENDING_REVIEW';
+    }).map(({ locationNotes, skuNotes, ...row }) => ({
       ...row,
       ...decodeInspectionNotes(skuNotes),
       // Older barcode-only/unknown records used these UI labels as their SKU.

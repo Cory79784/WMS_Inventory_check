@@ -76,6 +76,8 @@ export const vi: Record<TranslationKey, string> = {
   missingSku: "Quét hoặc nhập SKU hàng thừa!",
   missingBarcode: "Quét hoặc nhập Barcode / eBarcode hàng thừa!",
   noSkuPhotoWarning: "Hàng thừa không SKU/chưa rõ loại bắt buộc chụp ảnh!",
+  savingNow: "Đang lưu…",
+  unsavedChanges: "Thay đổi chưa được lưu",
   draftSaved: "Đã lưu tạm",
   noSkuExplanation: "Phải chụp rõ hàng không SKU và bao bì!",
   mandatory: "⚠️ Bắt buộc:",

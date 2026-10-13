@@ -1,6 +1,8 @@
 import { Env } from '../types';
+import { AUTH_SCHEMA } from '../auth/access';
 
 export const SCHEMA_STATEMENTS = [
+  ...AUTH_SCHEMA,
   // Historical reset evidence retains previous annotations and R2 photo keys.
   `CREATE TABLE IF NOT EXISTS inspection_reset_history (
     id TEXT PRIMARY KEY,

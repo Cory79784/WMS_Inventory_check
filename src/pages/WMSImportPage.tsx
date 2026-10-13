@@ -280,7 +280,7 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
       const pubRes = await fetch('/api/inventory/imports/publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ importId, hallId: currentHall }),
+        body: JSON.stringify({ importId, hallId: currentHall, includeImports: true }),
       });
 
       const pubJson = await pubRes.json();
@@ -291,9 +291,15 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
       setUploadProgress(100);
       setUploadStatusMsg(`${t('successfulPublish')} ${currentHall} ${t('activeVersion')} (${t('versionNumber')} V${pubJson.versionNumber})!`);
       setFile(null);
+      setFileSha256('');
       setParsedRows([]);
       setPreviewStats(null);
-      loadImports();
+      if (Array.isArray(pubJson.imports)) {
+        setActiveImportId(pubJson.activeImportId);
+        setImportsHistory(pubJson.imports);
+      } else {
+        await loadImports();
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setUploadStatusMsg(`❌ ${t('operationError')} ${msg}`);

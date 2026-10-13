@@ -256,7 +256,7 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
   // 5. POST /api/inventory/imports/publish (Validate and activate version)
   if (path === '/api/inventory/imports/publish' && request.method === 'POST') {
     try {
-      const body = await request.json() as { importId: string; hallId: string };
+      const body = await request.json() as { importId: string; hallId: string; includeImports?: boolean };
       if (!body.importId || !body.hallId) {
         return Response.json({ success: false, error: 'importId and hallId required' }, { status: 400 });
       }
@@ -354,6 +354,14 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
       ];
 
       await env.DB.batch(batchStmts);
+      // A refresh failure must not turn a committed publication into a failed import.
+      let imports: unknown[] | undefined;
+      if (body.includeImports) {
+        try {
+          imports = (await env.DB.prepare('SELECT * FROM inventory_imports WHERE hall_id = ? ORDER BY version_number DESC')
+            .bind(body.hallId).all()).results;
+        } catch { /* Client falls back to the existing version-list request. */ }
+      }
 
       return Response.json({
         success: true,
@@ -361,6 +369,7 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
         activeImportId: body.importId,
         versionNumber: imp.version_number,
         summary: stats,
+        imports,
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -855,6 +864,7 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
           user.userId,
           body.hallId,
           JSON.stringify({
+            operatorName: user.name,
             locationCode: body.locationCode,
             inspectionId,
             status,
@@ -961,7 +971,7 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
       const headers = new Headers();
       object.writeHttpMetadata(headers);
       headers.set('etag', object.httpEtag);
-      headers.set('Cache-Control', 'private, max-age=86400');
+      headers.set('Cache-Control', 'private, no-store');
       return new Response(object.body, { headers });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

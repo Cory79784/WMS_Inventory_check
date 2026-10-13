@@ -76,6 +76,8 @@ export const zh = {
   missingSku: "请输入或扫描多货商品的 SKU 编码！",
   missingBarcode: "请输入或扫描多货商品的 Barcode / eBarcode 条码！",
   noSkuPhotoWarning: "【规则强制要求】：无 SKU / 未知商品多货必须现场拍照存证！",
+  savingNow: "正在保存…",
+  unsavedChanges: "未保存的修改",
   draftSaved: "已暂存",
   noSkuExplanation: "无 SKU 或未知白牌货物，必须拍摄商品及外包装清晰照片存证！",
   mandatory: "⚠️ 规则强制要求：",
