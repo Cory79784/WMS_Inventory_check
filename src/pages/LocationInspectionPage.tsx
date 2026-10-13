@@ -586,13 +586,13 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
   // Save current location inspection to Cloudflare D1
   const handleSaveInspection = async (items = skuList, empty = isEmptyConfirmed, notes = locationNotes, linkedPhotos = photos, reset = false, auto = false) => {
-    if (!locData || saving || photoBusy || photoFailed || uploadingSurplusPhoto) return;
+    if (!locData || saving || photoBusy || photoFailed || uploadingSurplusPhoto) return false;
 
     // Check if all SKUs have been verified
     const unverifiedCount = items.filter((s) => s.actualQty === null || s.actualQty === undefined).length;
     if (unverifiedCount > 0 && !empty && !auto) {
       const confirmSave = confirm(`${t('unverifiedCountPrefix')} ${unverifiedCount} ${t('unverifiedConfirmSuffix')}`);
-      if (!confirmSave) return;
+      if (!confirmSave) return false;
     }
 
     setSaving(true);
@@ -648,7 +648,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
           notes, empty, uploads: [],
         });
       }
-      if (activeKey.current !== key) return;
+      if (activeKey.current !== key) return true;
       setLocData(savedData);
       if (!auto) {
         setSkuList(items);
@@ -661,11 +661,13 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       triggerHaptic(true);
       // IME-based PDA scanners need an editable target after the save button took focus.
       if (androidScanner) focusScanner();
+      return true;
 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setErrorMsg(`${t('saveFailed')}: ${msg}`);
       triggerHaptic(false);
+      return false;
     } finally {
       setSaving(false);
     }
