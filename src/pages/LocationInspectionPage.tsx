@@ -344,7 +344,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       Boolean(item.isReturn) || Boolean(item.returnCode?.trim())
     ) || Boolean(locationNotes.trim()) || photos.length > 0 || isEmptyConfirmed ||
       Boolean(locData.inspection?.isEmptyConfirmed);
-    if (hasEdits && !confirm(t('allNormalConfirm')) return;
+    if (hasEdits && !confirm(t('allNormalConfirm'))) return;
 
     // Only original WMS stock rows are retained; manually added surplus rows are discarded.
     const normalSkus = skuList.filter(item => item.systemQty > 0).map(item => ({
