@@ -674,13 +674,13 @@ export const DeviceTestPage: React.FC = () => {
             {healthData && (
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-slate-500 block text-[10px]">D1 状态</span>
+                  <span className="text-slate-500 block text-[10px]">{t('d1Status')}</span>
                   <span className="font-semibold text-slate-800">
                     {healthData.bindings.d1.details}
                   </span>
                 </div>
                 <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-slate-500 block text-[10px]">R2 状态</span>
+                  <span className="text-slate-500 block text-[10px]">{t('r2Status')}</span>
                   <span className="font-semibold text-slate-800">
                     {healthData.bindings.r2.details}
                   </span>
@@ -833,7 +833,7 @@ export const DeviceTestPage: React.FC = () => {
             </h2>
             <div className="p-2.5 bg-slate-50 border border-slate-200 rounded text-xs space-y-1">
               <div className="flex justify-between">
-                <span className="text-slate-500">鉴权模式:</span>
+                <span className="text-slate-500">{t('authMode')}</span>
                 <span className="font-mono font-bold text-slate-800">{authData?.mode || '未知'}</span>
               </div>
               <div className="flex justify-between">
