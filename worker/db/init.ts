@@ -1,6 +1,13 @@
 import { Env } from '../types';
 
 export const SCHEMA_STATEMENTS = [
+  // Historical reset evidence retains previous annotations and R2 photo keys.
+  `CREATE TABLE IF NOT EXISTS inspection_reset_history (
+    id TEXT PRIMARY KEY,
+    inspection_id TEXT NOT NULL,
+    changed_at TEXT NOT NULL,
+    previous_json TEXT NOT NULL
+  );`,
   // 1. Halls table
   `CREATE TABLE IF NOT EXISTS halls (
     hall_id TEXT PRIMARY KEY,
