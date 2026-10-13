@@ -694,6 +694,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             <input
               ref={scanInputRef}
               type="text"
+              dir="ltr"
               inputMode={manualInput ? 'text' : androidScanner ? undefined : 'none'}
               value={inputLoc}
               onChange={handleScanChange}
@@ -747,7 +748,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
         {/* First-segment vertical navigation; other segments remain unchanged. */}
         {locData && /^\d+-\d+-\d+$/.test(locData.locationCode) && (
-          <div className="flex items-center justify-center gap-3 mt-2 text-xs">
+          <div dir="ltr" className="flex items-center justify-center gap-3 mt-2 text-xs">
             <button type="button" aria-label={t('rowUp')} onPointerDown={keepScannerFocus}
               disabled={loading || saving || photoBusy || !verticalLocation(-1)}
               onClick={() => { const code = verticalLocation(-1); if (code) handleQueryLocation(code); }}
@@ -764,7 +765,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
         )}
         {/* Adjacent middle-segment codes; actual row ends are entered manually. */}
         {locData?.navigation && (
-          <div className="flex items-center justify-between gap-1 mt-2 pt-2 border-t border-slate-100 text-xs text-slate-500">
+          <div dir="ltr" className="flex items-center justify-between gap-1 mt-2 pt-2 border-t border-slate-100 text-xs text-slate-500">
             <button
               type="button"
               onPointerDown={keepScannerFocus}
@@ -962,7 +963,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                   )}
 
                   {/* Stock Quantities Grid (6 Pillars) */}
-                  <div className="grid grid-cols-6 gap-1 mt-2.5 pt-2 border-t border-slate-100 text-center">
+                  <div dir="ltr" className="grid grid-cols-6 gap-1 mt-2.5 pt-2 border-t border-slate-100 text-center">
                     <div className="bg-slate-50 rounded p-1">
                       <div className="text-[10px] text-slate-400">{t('book')}</div>
                       <div className="text-sm font-bold text-slate-800 font-mono">{item.systemQty}</div>
@@ -1153,7 +1154,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 {t('shortageQuantity')}
               </label>
               <input
-                type="number"
+                type="number" dir="ltr"
                 min="1"
                 max={shortageModalSku.systemQty}
                 value={shortageCountInput}
