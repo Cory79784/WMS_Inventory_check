@@ -12,8 +12,11 @@ export function readLanguage(): Language {
   } catch { return 'zh'; }
 }
 export function t(key: TranslationKey, params?: Record<string, string | number>): string {
-  const template = languages[readLanguage()][key];
-  return params ? template.replace(/\{(\w+)\}/g, (_, name: string) => String(params[name] ?? '{' + name + '}')) : template;
+  const lang = readLanguage();
+  const template = languages[lang][key];
+  const rendered = params ? template.replace(/\{(\w+)\}/g, (_, name: string) => String(params[name] ?? '{' + name + '}')) : template;
+  // RTL isolate affects text runs only; never mirror physical controls, codes or numbers.
+  return lang === 'ar' ? '\u2067' + rendered + '\u2069' : rendered;
 }
 export function persistLanguage(language: Language): boolean {
   try { localStorage.setItem(STORAGE_KEY, language); return true; } catch { return false; }
