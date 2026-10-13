@@ -345,7 +345,7 @@ describe('PDA inspection UI interactions', () => {
     await click(button('重试'));
     expect(api.uploadInspectionPhoto.mock.calls[1][0]).toBe(file);
     await act(async () => finish({ photoId: 'p1', objectKey: 'original.jpg', previewUrl: '/photo' }));
-    expect(container.textContent).toContain('已保存');
+    expect(container.textContent).toContain('照片等待保存');
     expect(button('保存本库位核查').disabled).toBe(false);
   });
   it('uploads multiple original files with concurrency capped at two', async () => {
@@ -365,6 +365,67 @@ describe('PDA inspection UI interactions', () => {
     expect(container.textContent).toContain('现场照片存证 (3 张)');
   });
 
+  it('allows normal-location notes without changing quantity or triggering automatic save', async () => {
+    await query('113-060-1');
+    await click(button('正常'));
+    const notes = container.querySelector('#location-inspection-notes') as HTMLTextAreaElement;
+    expect(notes).toBeTruthy();
+    expect(notes.placeholder).toContain('货物损坏');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!.call(notes, '货架损坏、无 SKU 标签');
+      notes.dispatchEvent(new window.Event('input', { bubbles: true }));
+    });
+    expect(api.saveLocationInspection).not.toHaveBeenCalled();
+    await click(button('保存本库位核查'));
+    expect(api.saveLocationInspection).toHaveBeenCalledWith(expect.objectContaining({
+      locationCode: '113-060-1',
+      notes: '货架损坏、无 SKU 标签',
+      skus: [expect.objectContaining({ actualQty: 10, differenceQty: 0, discrepancyType: 'NORMAL' })],
+    }));
+  });
+  it('allows notes on a sparse empty location and saves them with empty confirmation', async () => {
+    const base = await api.fetchLocationAudit('H1', '113-061-1');
+    api.fetchLocationAudit.mockResolvedValueOnce({ ...base, locationCode: '113-061-1', skus: [], hasBookStock: false });
+    await query('113-061-1');
+    const notes = container.querySelector('#location-inspection-notes') as HTMLTextAreaElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!.call(notes, '货架损坏');
+      notes.dispatchEvent(new window.Event('input', { bubbles: true }));
+    });
+    await click(button('确认为空库位'));
+    expect(api.saveLocationInspection).toHaveBeenCalledWith(expect.objectContaining({
+      isEmptyConfirmed: true, notes: '货架损坏', skus: [],
+    }));
+  });
+  it('shows a captured photo locally, keeps original file untouched and saves only on explicit submission', async () => {
+    await query('113-062-1');
+    const createObjectURL = vi.fn(() => 'blob:original-unmodified');
+    const prior = (globalThis.URL as any).createObjectURL;
+    (globalThis.URL as any).createObjectURL = createObjectURL;
+    try {
+      const file = new window.File(['ORIGINAL JPEG DATA'], 'capture.jpg', { type: 'image/jpeg' });
+      const input = container.querySelector('input[type="file"][multiple]')!;
+      Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+      let finish!: (value: unknown) => void;
+      api.uploadInspectionPhoto.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+      await act(async () => input.dispatchEvent(new window.Event('change', { bubbles: true })));
+      expect(createObjectURL).toHaveBeenCalledWith(file);
+      expect(container.querySelector('img[src="blob:original-unmodified"]')).toBeTruthy();
+      expect(api.saveLocationInspection).not.toHaveBeenCalled();
+      await act(async () => finish({ photoId: 'capture-1', objectKey: 'inspections/H1/capture.jpg', previewUrl: '/private-r2' }));
+      expect(container.querySelector('img[src="blob:original-unmodified"]')).toBeTruthy();
+      expect(container.textContent).toContain('照片已上传');
+      expect(api.uploadInspectionPhoto.mock.calls[0][0]).toBe(file);
+      await click(button('正常'));
+      await click(button('保存本库位核查'));
+      expect(api.saveLocationInspection).toHaveBeenCalledWith(expect.objectContaining({
+        notes: '',
+        photos: [{ photoId: 'capture-1', objectKey: 'inspections/H1/capture.jpg', sku: undefined }],
+      }));
+    } finally {
+      (globalThis.URL as any).createObjectURL = prior;
+    }
+  });
   it('scanner reads the latest DOM value when input and Enter arrive in the same burst', async () => {
     await act(async () => {
       Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(scanInput(), '119-028-1');
