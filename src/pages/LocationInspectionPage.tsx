@@ -212,7 +212,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     if (scanTimer.current) clearTimeout(scanTimer.current);
     const loc = targetLoc.trim();
     if (!loc) return;
-    if (saving || photoBusy || uploadsInFlight.current || uploadingSurplusPhoto || unsavedAutoChanges.current) {
+    if (saving || photoBusy || uploadsInFlight.current || uploadingSurplusPhoto) {
       setErrorMsg(t('scanBusy'));
       return;
     }
