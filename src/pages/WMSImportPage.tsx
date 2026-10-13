@@ -400,7 +400,7 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
           <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-start gap-2">
             <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
             <div>
-              <span className="font-bold">检测到相同文件已存在：</span>
+              <span className="font-bold">{t('duplicateDetected')}</span>
               文件哈希 (SHA-256) 与历史已发布的 <strong>V{existingDuplicateVer}</strong> 完全一致。建议确认是否误重复上传相同文件。
             </div>
           </div>
@@ -411,19 +411,19 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
           <div className="space-y-3 pt-2">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
               <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
-                <span className="text-slate-400 block text-[10px]">明细记录数</span>
+                <span className="text-slate-400 block text-[10px]">{t('detailRows')}</span>
                 <span className="font-bold text-slate-800 text-sm">{previewStats.totalRows} 行</span>
               </div>
               <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
-                <span className="text-slate-400 block text-[10px]">有库存库位数</span>
+                <span className="text-slate-400 block text-[10px]">{t('stockedLocationCount')}</span>
                 <span className="font-bold text-slate-800 text-sm">{previewStats.locations} 个</span>
               </div>
               <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
-                <span className="text-slate-400 block text-[10px]">涵盖 SKU 种数</span>
+                <span className="text-slate-400 block text-[10px]">{t('skuVarieties')}</span>
                 <span className="font-bold text-slate-800 text-sm">{previewStats.skus} 个</span>
               </div>
               <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
-                <span className="text-slate-400 block text-[10px]">库存总件数</span>
+                <span className="text-slate-400 block text-[10px]">{t('totalStockPieces')}</span>
                 <span className="font-bold text-brand-600 text-sm">{previewStats.totalQty} 件</span>
               </div>
             </div>
@@ -431,14 +431,14 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
             {/* Decision 4 Option A: Export Date Confirmation */}
             <div className="flex items-center gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
               <Clock className="w-4 h-4 text-slate-500 shrink-0" />
-              <span className="text-slate-600 shrink-0">WMS 数据导出基准日 (Decision 4-A):</span>
+              <span className="text-slate-600 shrink-0">{t('exportBaseline')}</span>
               <input
                 type="date"
                 value={sourceExportDate}
                 onChange={(e) => setSourceExportDate(e.target.value)}
                 className="px-2 py-1 bg-white border border-slate-300 rounded text-xs text-slate-800 font-mono"
               />
-              <span className="text-[10px] text-slate-400">(自动从文件名匹配或手动确认)</span>
+              <span className="text-[10px] text-slate-400">{t('dateHint')}</span>
             </div>
 
             {/* Validation Badges */}
@@ -492,7 +492,7 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
           条码检索与歧义选择验证 (决策 1-A & 决策 3-A 实测)
         </h2>
         <p className="text-xs text-slate-500">
-          基于当前生效版本的<strong>倒排条码索引表</strong>测试扫描。输入复合 eBarcode 中的任意子条码（如 <code>XBDYDW096HEA0X</code>）或非唯一条码，验证毫秒级精确检索与歧义候选卡弹出。
+          基于当前生效版本的<strong>{t('barcodeIndex')}</strong>测试扫描。输入复合 eBarcode 中的任意子条码（如 <code>XBDYDW096HEA0X</code>）或非唯一条码，验证毫秒级精确检索与歧义候选卡弹出。
         </p>
 
         <div className="flex gap-2">
@@ -500,7 +500,7 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
             type="text"
             value={testBarcodeQuery}
             onChange={(e) => setTestBarcodeQuery(e.target.value)}
-            placeholder="输入 SKU、标准条码或复合 eBarcode 子码..."
+            placeholder={t('barcodeSearchPlaceholder')}
             className="flex-1 px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg font-mono"
           />
           <button
@@ -515,7 +515,7 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
 
         {/* Quick sample chips */}
         <div className="flex flex-wrap gap-1.5 text-xs text-slate-500 items-center">
-          <span className="text-[11px] text-slate-400">测试用例:</span>
+          <span className="text-[11px] text-slate-400">{t('testCases')}</span>
           <button
             type="button"
             onClick={() => setTestBarcodeQuery('XBDYDW096HEA0X')}
@@ -555,7 +555,7 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
                   ✅ 唯一定位
                 </span>
               ) : (
-                <span className="text-slate-400 text-[11px]">未找到匹配记录</span>
+                <span className="text-slate-400 text-[11px]">{t('noMatches')}</span>
               )}
             </div>
 
@@ -587,7 +587,7 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
         </h2>
 
         {importsHistory.length === 0 ? (
-          <p className="text-xs text-slate-400 py-4 text-center">暂无历史快照版本</p>
+          <p className="text-xs text-slate-400 py-4 text-center">{t('noHistory')}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
@@ -596,8 +596,8 @@ export const WMSImportPage: React.FC<WMSImportPageProps> = ({ currentHall }) => 
                   <th className="py-2 px-2">{t('version')}</th>
                   <th className="py-2 px-2">{t('filename')}</th>
                   <th className="py-2 px-2">{t('dataImported')}</th>
-                  <th className="py-2 px-2">账面库位</th>
-                  <th className="py-2 px-2">SKU 数</th>
+                  <th className="py-2 px-2">{t('stockRow')}</th>
+                  <th className="py-2 px-2">{t('skuNumber')}</th>
                   <th className="py-2 px-2">{t('totalQuantity')}</th>
                   <th className="py-2 px-2">{t('status')}</th>
                 </tr>
