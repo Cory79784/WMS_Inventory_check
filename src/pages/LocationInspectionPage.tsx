@@ -148,7 +148,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   const photoBusy = uploads.some((upload) => upload.status === 'uploading');
   const photoFailed = uploads.some((upload) => upload.status === 'error');
   useEffect(() => {
-    if (locData) locationDrafts.set(locationKey(locData.hallId, locData.locationCode, locData.referenceImportId), {
+    if (locData && !flushed) locationDrafts.set(locationKey(locData.hallId, locData.locationCode, locData.referenceImportId), {
       data: locData, skus: skuList, photos, notes: locationNotes, empty: isEmptyConfirmed, uploads,
     });
   }, [locData, skuList, photos, locationNotes, isEmptyConfirmed, uploads]);
@@ -215,6 +215,13 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     if (saving || photoBusy || uploadsInFlight.current || uploadingSurplusPhoto) {
       setErrorMsg(t('scanBusy'));
       return;
+    }
+    let flushed = false;
+    if (unsavedAutoChanges.current && locData) {
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+      const ok = await handleSaveInspection(skuList, isEmptyConfirmed, locationNotes, photos, false, true);
+      if (!ok) return;
+      flushed = true;
     }
     const id = ++requestId.current;
     if (androidScanner && manualInput && !virtualKeyboard) scanInputRef.current?.blur();
