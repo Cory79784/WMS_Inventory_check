@@ -263,7 +263,7 @@ export const ar: Record<TranslationKey, string> = {
   siteTitle: "جرد مخزون المستودع PDA",
   locationRemarkLabel: "ملاحظات الموقع (للحالات الطبيعية وغير الطبيعية)",
   locationRemarkPlaceholder: "مثال: بضاعة تالفة، لا يوجد ملصق SKU، لم تُغطَّ بوليصة الشحن، رف تالف أو حالات خاصة أخرى",
-  photoUploadPendingHint: "تم رفع الصورة. اضغط «حفظ فحص الموقع» لحفظ ارتباط الصورة بالسجل.",
+  photoUploadPendingHint: "تم رفع الصورة، ويجري حفظ ارتباطها بسجل الفحص تلقائيًا.",
   photoUnsavedBadge: "صورة بانتظار الحفظ",
   exitConfirm: "هل تريد الخروج من نظام تدقيق المخزون؟",
   exitUnsavedConfirm: "توجد بيانات فحص غير محفوظة. ستفقد عند الخروج. هل تريد المتابعة؟",
