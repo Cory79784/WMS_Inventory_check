@@ -817,7 +817,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                   {locData.locationCode}
                   {isEmptyConfirmed && (
                     <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-normal font-sans border border-slate-200">
-                      确认为空库位
+                      {t('emptyConfirm')}
                     </span>
                   )}
                 </h2>
