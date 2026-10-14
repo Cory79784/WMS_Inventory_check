@@ -2,7 +2,7 @@ import { Env } from './types';
 import { handleHealthCheck } from './routes/health';
 import { handleD1Test } from './routes/d1-test';
 import { handleR2Test } from './routes/r2-test';
-import { authenticateRequest, handleAuth, validOrigin } from './auth/access';
+import { handleAuth, validOrigin } from './auth/access';
 import { handleInventoryRoutes } from './routes/inventory';
 import { ensureDatabaseSchema } from './db/init';
 
@@ -31,8 +31,6 @@ export default {
     // API Routes
     if (url.pathname.startsWith('/api/')) {
       if (url.pathname.startsWith('/api/auth/')) return handleAuth(request, env);
-      const auth = await authenticateRequest(request, env);
-      if (!auth.user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
       if (!['GET', 'HEAD'].includes(request.method) && !validOrigin(request)) {
         return Response.json({ error: 'Invalid origin' }, { status: 403 });
       }

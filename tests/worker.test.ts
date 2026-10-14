@@ -122,7 +122,7 @@ describe('Worker Routes & Feasibility Diagnostics', () => {
     expect(mockPut).toHaveBeenCalled();
   });
 
-  it('Rejects unauthenticated requests', async () => {
+  it('Allows public requests without a session', async () => {
     const env: Env = {
       DB: {} as unknown as D1Database,
       PHOTO_BUCKET: {} as unknown as R2Bucket,
@@ -131,10 +131,10 @@ describe('Worker Routes & Feasibility Diagnostics', () => {
 
     const req = new Request('https://audit.test/api/auth/me');
     const auth = await authenticateRequest(req, env);
-    expect(auth.user).toBeUndefined();
+    expect(auth.user.name).toBe('public');
   });
 
-  it('Rejects forged legacy Access identity headers', async () => {
+  it('Ignores legacy identity headers in public mode', async () => {
     const env: Env = {
       DB: {} as unknown as D1Database,
       PHOTO_BUCKET: {} as unknown as R2Bucket,
@@ -148,6 +148,6 @@ describe('Worker Routes & Feasibility Diagnostics', () => {
     });
 
     const auth = await authenticateRequest(customReq, env);
-    expect(auth.user).toBeUndefined();
+    expect(auth.user.name).toBe('public');
   });
 });
