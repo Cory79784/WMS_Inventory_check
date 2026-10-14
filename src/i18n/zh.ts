@@ -11,7 +11,7 @@ export const zh = {
   manualReturn: '手动输入退货码', scanReturn: '扫描退货码或跟踪号（如有）',
   originalExport: '核查结果导出', differences: '仅导出差异',
   allExport: '导出全部核查结果', exporting: '导出中…',
-  exportDescription: '仅导出已完成核查的记录，包含已保留的 WMS 历史版本。同一版本重复保存会更新原结果，需留档时请先导出。',
+  exportDescription: '仅差异：多货、少货、账外或无 SKU 多货，以及有库位备注、SKU 备注、退货标记、退货码或照片的明细。纯正常明细、自动“盘点正常相符”提示、仅待复核状态不算差异。仅导出已完成核查的记录，包含历史版本。库位级备注或照片适用于该库位的所有明细。',
   scanner: '扫库位条码 / 输入库位 (如 109-047-1)', previous: '上一库位', next: '下一库位',
   rowUp: '上一排库位', rowDown: '下一排库位',
   book: '账面', available: '可用', allocated: '待出', frozen: '冻结',

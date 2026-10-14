@@ -245,7 +245,8 @@ describe('P0 evidence filter on real D1', () => {
   it('keeps location notes/photos and SKU/return evidence in all four languages, excludes plain normal rows', async () => {
     const db = await mf.getD1Database('DB');
     for (const [id, notes, skuNotes, photo] of [
-      ['p0-plain', '   ', ' ', false], ['p0-note', '库位备注', '', false],
+      ['p0-plain', '   ', ' ', false], ['p0-auto-normal', '', '盘点正常相符', false],
+      ['p0-return-flag', '', '@wms-return-v1:{"notes":"","isReturn":true,"returnCode":""}', false], ['p0-note', '库位备注', '', false],
       ['p0-photo', '', '', true], ['p0-sku', '', 'SKU备注', false],
       ['p0-return', '', '@wms-return-v1:{"notes":"","isReturn":true,"returnCode":"R1"}', false],
     ] as const) {
@@ -258,14 +259,21 @@ describe('P0 evidence filter on real D1', () => {
         await db.prepare('INSERT INTO inspection_photos (photo_id,inspection_id,object_key) VALUES (?,?,?)').bind(id,id,'p0-original.png').run();
       }
     }
+    // A mixed location's review status must not export its unrelated normal SKU.
+    await db.prepare("UPDATE location_inspections SET status='PENDING_REVIEW' WHERE inspection_id='p0-plain'").run();
+    await db.prepare(`INSERT INTO sku_inspections (id,inspection_id,sku,system_qty,actual_qty,difference_qty,discrepancy_type,notes)
+      VALUES ('p0-shortage','p0-plain','SHORTAGE',10,8,-2,'SHORTAGE','')`).run();
     for (const language of ['zh','de','vi','ar']) {
       const result = await (await request('http://localhost/api/inventory/inspection/export?hallId=H1&mode=differences', {headers:{'Accept-Language':language}})).json() as any;
       expect(result.rows.filter((r:any) => r.inspectionId.startsWith('p0-')).map((r:any) => r.inspectionId).sort())
-        .toEqual(['p0-note','p0-photo','p0-return','p0-sku']);
+        .toEqual(['p0-note','p0-photo','p0-plain','p0-return','p0-return-flag','p0-sku']);
+      expect(result.rows.filter((r:any) => r.inspectionId==='p0-plain').map((r:any)=>r.sku)).toEqual(['SHORTAGE']);
       expect(result.rows.find((r:any) => r.inspectionId==='p0-photo').photoKeys).toEqual(['p0-original.png']);
     }
     const all = await (await request('http://localhost/api/inventory/inspection/export?hallId=H1&mode=all')).json() as any;
-    expect(all.rows.some((r:any)=>r.inspectionId==='p0-plain')).toBe(true);
+    expect(all.rows.filter((r:any)=>r.inspectionId==='p0-plain')).toHaveLength(2);
+    expect(all.rows.some((r:any)=>r.inspectionId==='p0-auto-normal')).toBe(true);
+    expect(all.rows.some((r:any)=>r.inspectionId==='p0-return-flag')).toBe(true);
   });
   it('returns failure and rolls back the save if actual D1 rejects a statement', async () => {
     const db = await mf.getD1Database('DB');

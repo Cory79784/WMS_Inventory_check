@@ -49,10 +49,12 @@ export async function exportInspectionResults(request: Request, env: Env): Promi
     const rows: InspectionExportRow[] = result.results.filter(row => {
       if (mode === 'all') return true;
       const metadata = decodeInspectionNotes(row.skuNotes);
+      // Older one-tap normal confirmations stored this generated message as a note.
+      const skuNote = row.differenceQty === 0 && row.discrepancyType === 'NORMAL'
+        && metadata.notes.trim() === '盘点正常相符' ? '' : metadata.notes.trim();
       return row.differenceQty !== 0 || Boolean(row.discrepancyType && row.discrepancyType !== 'NORMAL')
-        || Boolean(row.locationNotes?.trim() || metadata.notes.trim() || metadata.isReturn || metadata.returnCode.trim())
-        || Boolean(photoKeys.get(row.inspectionId)?.some(key => key?.trim()))
-        || row.status === 'PENDING_REVIEW';
+        || Boolean(row.locationNotes?.trim() || skuNote || metadata.isReturn || metadata.returnCode.trim())
+        || Boolean(photoKeys.get(row.inspectionId)?.some(key => key?.trim()));
     }).map(({ locationNotes, skuNotes, ...row }) => ({
       ...row,
       ...decodeInspectionNotes(skuNotes),
