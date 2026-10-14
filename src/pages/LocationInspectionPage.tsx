@@ -603,7 +603,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     setSaveSuccessMsg(null);
     setErrorMsg(null);
 
-    const hasAnyDiscrepancy = items.some((s) => s.discrepancyType && s.discrepancyType !== 'NORMAL');
+    const hasAnyDiscrepancy = items.some((s) => s.isReturn || (s.discrepancyType && s.discrepancyType !== 'NORMAL'));
     const incomplete = unverifiedCount > 0 || (items.length === 0 && !empty);
     const finalStatus = incomplete ? 'IN_PROGRESS' : hasAnyDiscrepancy ? 'PENDING_REVIEW' : 'VERIFIED';
 

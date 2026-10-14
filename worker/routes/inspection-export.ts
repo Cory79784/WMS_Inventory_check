@@ -53,7 +53,7 @@ export async function exportInspectionResults(request: Request, env: Env): Promi
       const skuNote = row.differenceQty === 0 && row.discrepancyType === 'NORMAL'
         && metadata.notes.trim() === '盘点正常相符' ? '' : metadata.notes.trim();
       return row.differenceQty !== 0 || Boolean(row.discrepancyType && row.discrepancyType !== 'NORMAL')
-        || Boolean(row.locationNotes?.trim() || skuNote || metadata.returnCode.trim())
+        || Boolean(row.locationNotes?.trim() || skuNote || metadata.isReturn || metadata.returnCode.trim())
         || Boolean(photoKeys.get(row.inspectionId)?.some(key => key?.trim()));
     }).map(({ locationNotes, skuNotes, ...row }) => ({
       ...row,

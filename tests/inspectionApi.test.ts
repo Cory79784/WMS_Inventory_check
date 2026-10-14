@@ -266,7 +266,7 @@ describe('P0 evidence filter on real D1', () => {
     for (const language of ['zh','de','vi','ar']) {
       const result = await (await request('http://localhost/api/inventory/inspection/export?hallId=H1&mode=differences', {headers:{'Accept-Language':language}})).json() as any;
       expect(result.rows.filter((r:any) => r.inspectionId.startsWith('p0-')).map((r:any) => r.inspectionId).sort())
-        .toEqual(['p0-note','p0-photo','p0-plain','p0-return','p0-sku']);
+        .toEqual(['p0-note','p0-photo','p0-plain','p0-return','p0-return-flag','p0-sku']);
       expect(result.rows.filter((r:any) => r.inspectionId==='p0-plain').map((r:any)=>r.sku)).toEqual(['SHORTAGE']);
       expect(result.rows.find((r:any) => r.inspectionId==='p0-photo').photoKeys).toEqual(['p0-original.png']);
     }
