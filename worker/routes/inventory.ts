@@ -29,11 +29,8 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
   const url = new URL(request.url);
   const path = url.pathname;
 
-  // Authenticate user
+  // Public attribution; no login or session is required.
   const auth = await authenticateRequest(request, env);
-  if (!auth.user) {
-    return Response.json({ success: false, error: auth.error || 'Unauthorized' }, { status: 401 });
-  }
   const user = auth.user;
 
   if (path === '/api/inventory/inspection/export' && request.method === 'GET') {

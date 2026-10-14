@@ -128,7 +128,6 @@ export async function uploadInspectionPhoto(
       if (event.lengthComputable) onProgress?.(Math.round(event.loaded / event.total * 100));
     };
     xhr.onload = () => {
-      if (xhr.status === 401) window.dispatchEvent(new Event('wms-session-expired'));
       try {
         const result = JSON.parse(xhr.responseText);
         if (xhr.status < 200 || xhr.status >= 300 || !result.success) {

@@ -1,6 +1,6 @@
 # Warehouse PDA Inventory Audit Tool (海外仓 PDA 库存核查系统)
 
-基于 React + TypeScript + Vite + Cloudflare Workers (D1, R2, Zero Trust Access) 构建的海外仓现场 PDA 库存核查工具。
+基于 React + TypeScript + Vite + Cloudflare Workers (D1, R2) 构建的海外仓现场 PDA 库存核查工具。
 
 ## 🌟 核心业务特性
 
@@ -20,7 +20,7 @@
 - **后端**：Cloudflare Workers (单 Worker 承载静态页面分发与 `/api/*` 接口)
 - **数据库**：Cloudflare D1 (SQLite 关系型数据库)
 - **对象存储**：Cloudflare R2 (私有现场照片存储)
-- **安全认证**：Cloudflare Zero Trust (Access) 服务端鉴权与员工工号绑定
+- **访问方式**：公开访问，无登录；新增操作记录统一标为 `public`
 - **测试框架**：Vitest (全套自动化单元与集成测试)
 
 ---
