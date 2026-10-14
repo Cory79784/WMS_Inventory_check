@@ -123,6 +123,8 @@ export async function uploadInspectionPhoto(
     const xhr = new XMLHttpRequest();
     const query = new URLSearchParams({ hallId, locationCode, filename: file.name });
     xhr.open('POST', `/api/inventory/inspection/photo?${query}`);
+    xhr.timeout = 120000;
+    xhr.ontimeout = () => reject(new Error('照片上传超时，请检查网络后重试'));
     xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress?.(Math.round(event.loaded / event.total * 100));

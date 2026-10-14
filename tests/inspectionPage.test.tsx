@@ -385,6 +385,37 @@ describe('PDA inspection UI interactions', () => {
     expect(container.textContent).toContain('照片等待保存');
     expect(button('保存本库位核查').disabled).toBe(false);
   });
+  it('previews and automatically saves a location photo on a PDA without randomUUID', async () => {
+    await query('113-063-1');
+    const originalCrypto = globalThis.crypto;
+    const originalPreview = URL.createObjectURL;
+    vi.stubGlobal('crypto', {});
+    URL.createObjectURL = vi.fn(() => 'blob:pda-capture');
+    try {
+      const file = new window.File(['original photo bytes'], 'pda.jpg', { type: 'image/jpeg' });
+      let finish!: (value: unknown) => void;
+      api.uploadInspectionPhoto.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+      const input = container.querySelector('input[type="file"][multiple]')!;
+      Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+      await act(async () => input.dispatchEvent(new window.Event('change', { bubbles: true })));
+      expect(container.querySelector('img[src="blob:pda-capture"]')).toBeTruthy();
+      expect(container.textContent).toContain('上传中');
+      expect(api.uploadInspectionPhoto).toHaveBeenCalledWith(file, 'H1', '113-063-1', expect.any(Function));
+      await act(async () => finish({ photoId: 'pda-1', objectKey: 'inspections/H1/pda.jpg' }));
+      expect(container.textContent).toContain('照片等待保存');
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 950)); });
+      expect(api.saveLocationInspection).toHaveBeenCalledWith(expect.objectContaining({
+        locationCode: '113-063-1', status: 'IN_PROGRESS',
+        photos: [{ photoId: 'pda-1', objectKey: 'inspections/H1/pda.jpg', sku: undefined }],
+      }));
+      expect(container.querySelector('img[src="blob:pda-capture"]')).toBeTruthy();
+      expect(container.textContent).not.toContain('照片等待保存');
+      expect(container.textContent).not.toContain('照片上传成功，核查记录正在自动保存');
+    } finally {
+      vi.stubGlobal('crypto', originalCrypto);
+      URL.createObjectURL = originalPreview;
+    }
+  });
   it('uploads multiple original files with concurrency capped at two', async () => {
     await query('113-028-1');
     const files = [1,2,3].map((n) => new window.File([String(n)], `original${n}.jpg`, { type: 'image/jpeg' }));

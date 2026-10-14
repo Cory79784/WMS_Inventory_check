@@ -7,6 +7,8 @@ class TestXHR {
   onload: any;
   onerror: any;
   onabort: any;
+  ontimeout: any;
+  timeout = 0;
   status = 200;
   responseText = '';
   url = '';
@@ -55,4 +57,12 @@ describe('Original-photo upload progress', () => {
     await expect(promise).rejects.toThrow('请重试');
     expect(TestXHR.last.body).toBe(file);
   });
+  it('times out a stalled upload so the page can show an error and retry', async () => {
+    vi.stubGlobal('XMLHttpRequest', TestXHR);
+    const promise = uploadInspectionPhoto(new File(['original'], 'photo.jpg'), 'H1', '109-028-1');
+    expect(TestXHR.last.timeout).toBe(120000);
+    TestXHR.last.ontimeout();
+    await expect(promise).rejects.toThrow('上传超时');
+  });
+
 });

@@ -33,6 +33,7 @@ interface PhotoUpload {
   file: File;
   progress: number;
   status: 'uploading' | 'saved' | 'error';
+  photoId?: string;
   sku?: string;
   previewUrl?: string;
 }
@@ -555,7 +556,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       // Original file stays intact. A local blob URL makes newly captured photos
       // visible immediately, even if the private R2 GET is temporarily unavailable.
       const localPreview = task.previewUrl || result.previewUrl;
-      update({ status: 'saved', progress: 100 }, {
+      update({ status: 'saved', progress: 100, photoId: result.photoId }, {
         photoId: result.photoId, objectKey: result.objectKey,
         previewUrl: localPreview, sku: task.sku || undefined,
       });
@@ -572,7 +573,9 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   const handleLocationPhotoUpload = async (files: File[]) => {
     if (!locData || uploadsInFlight.current) return;
     const tasks: PhotoUpload[] = files.map((file) => ({
-      id: crypto.randomUUID(), file, progress: 0, status: 'uploading', sku: photoTargetSku || undefined,
+      // UI queue identifiers are not authentication tokens; support older PDA browsers.
+      id: typeof globalThis.crypto?.randomUUID === 'function' ? globalThis.crypto.randomUUID()
+        : `upload_${Date.now()}_${Math.random().toString(36).slice(2)}`, file, progress: 0, status: 'uploading', sku: photoTargetSku || undefined,
       previewUrl: (() => { try { return URL.createObjectURL(file); } catch { return undefined; } })(),
     }));
     const key = locationKey(locData.hallId, locData.locationCode, locData.referenceImportId);
@@ -1116,7 +1119,11 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 capture="environment"
                 className="hidden"
                 onChange={(e) => {
-                  if (e.target.files?.length) handleLocationPhotoUpload(Array.from(e.target.files));
+                  if (e.target.files?.length) {
+                    void handleLocationPhotoUpload(Array.from(e.target.files)).catch(error => {
+                      setErrorMsg(error instanceof Error ? error.message : String(error));
+                    });
+                  }
                   e.target.value = '';
                 }}
               />
@@ -1141,7 +1148,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                   </span>
                   {upload.status === 'error' ? (
                     <button type="button" disabled={photoBusy || saving} onClick={() => uploadPhoto(upload)} className="text-blue-600 shrink-0">{t('retry')}</button>
-                  ) : <span className="shrink-0">{upload.status === 'saved' ? t('photoUnsavedBadge') : `${t('photoUploading')} ${upload.progress}%${upload.progress === 100 ? t('uploadWaiting') : ''}`}</span>}
+                  ) : <span className="shrink-0">{upload.status === 'saved' ? (locData.inspection?.photos.some(photo => photo.photoId === upload.photoId) ? t('saved') : t('photoUnsavedBadge')) : `${t('photoUploading')} ${upload.progress}%${upload.progress === 100 ? t('uploadWaiting') : ''}`}</span>}
                 </div>
                 {upload.status === 'uploading' && <progress aria-label={t('uploadQuantityLabel')} max={100} value={upload.progress} className="w-full h-2" />}
               </div>
