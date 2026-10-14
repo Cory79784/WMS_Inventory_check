@@ -336,7 +336,8 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             actualQty: item.systemQty,
             differenceQty: 0,
             discrepancyType: 'NORMAL',
-            notes: '盘点正常相符',
+            // A normal confirmation is not an operator remark. Preserve genuine notes.
+            notes: item.notes === '盘点正常相符' ? '' : item.notes,
             isReturn: false,
             returnCode: '',
           };
