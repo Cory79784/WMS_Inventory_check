@@ -125,7 +125,7 @@ describe('PDA inspection UI interactions', () => {
     Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 Android PDA' });
     try {
       await act(async () => root.render(<Page currentHall="H1" onOpenImport={() => {}} onOpenTest={() => {}} />));
-      expect(scanInput().hasAttribute('inputmode')).toBe(false);
+      expect(scanInput().inputMode).toBe('none');
       for (const code of ['115-002-1', '115-003-1']) {
         await act(async () => {
           Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(scanInput(), code);
@@ -150,7 +150,7 @@ describe('PDA inspection UI interactions', () => {
       Object.defineProperty(navigator, 'userAgent', { configurable: true, value: originalAgent });
     }
   });
-  it('uses native manual keyboard control when supported and only shows it on keyboard-button request', async () => {
+  it('uses ordinary text focus on keyboard-button request even when a keyboard API exists', async () => {
     const originalAgent = navigator.userAgent;
     const keyboard = { hide: vi.fn(), show: vi.fn() };
     Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Android PDA' });
@@ -163,7 +163,7 @@ describe('PDA inspection UI interactions', () => {
       expect(keyboard.show).not.toHaveBeenCalled();
       await act(async () => {
         container.querySelector('[aria-label="手动输入库位"]')!.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-        expect(keyboard.show).toHaveBeenCalledTimes(1);
+        expect(keyboard.show).not.toHaveBeenCalled();
         expect(document.activeElement).toBe(scanInput());
         expect(scanInput().inputMode).toBe('text');
         expect(scanInput().getAttribute('virtualkeyboardpolicy')).toBe('auto');
@@ -183,7 +183,7 @@ describe('PDA inspection UI interactions', () => {
       expect(document.activeElement).toBe(scanInput());
       expect(scanInput().readOnly).toBe(false);
       expect(scanInput().getAttribute('virtualkeyboardpolicy')).toBe('auto');
-      expect(scanInput().inputMode).not.toBe('none');
+      expect(scanInput().inputMode).toBe('none');
       await query('115-008-1');
       expect(api.fetchLocationAudit).toHaveBeenCalledWith('H1', '115-008-1');
       await click(container.querySelector('[aria-label="手动输入库位"]')!);
@@ -212,6 +212,49 @@ describe('PDA inspection UI interactions', () => {
     } finally {
       Object.defineProperty(navigator, 'userAgent', { configurable: true, value: originalAgent });
       delete (navigator as any).virtualKeyboard;
+    }
+  });
+  it('keeps Android scanner mode through 102-012-1 to 102-011-1 navigation and restores manual mode on demand', async () => {
+    const originalAgent = navigator.userAgent;
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Android Chrome PDA' });
+    try {
+      await act(async () => root.unmount());
+      root = createRoot(container);
+      await act(async () => root.render(<Page currentHall="H1" onOpenImport={() => {}} onOpenTest={() => {}} />));
+      expect(scanInput().inputMode).toBe('none');
+      expect(scanInput().readOnly).toBe(false);
+      expect(scanInput().hasAttribute('autofocus')).toBe(false);
+      const focus = vi.spyOn(scanInput(), 'focus');
+      const blur = vi.spyOn(scanInput(), 'blur');
+      await act(async () => {
+        container.querySelector('[aria-label="手动输入库位"]')!.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+        // Attributes and focus change before React commits and before user activation expires.
+        expect(scanInput().inputMode).toBe('text');
+        expect(scanInput().readOnly).toBe(false);
+        expect(document.activeElement).toBe(scanInput());
+        expect(blur).toHaveBeenCalled();
+        expect(focus).toHaveBeenCalled();
+      });
+      await click(container.querySelector('[aria-label="返回扫码模式"]')!);
+      expect(scanInput().inputMode).toBe('none');
+      expect(scanInput().readOnly).toBe(false);
+      await query('102-012-1');
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+      expect(scanInput().inputMode).toBe('none');
+      await click(container.querySelector('[aria-label="上一库位"]')!);
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+      expect(api.fetchLocationAudit).toHaveBeenLastCalledWith('H1', '102-011-1');
+      expect(scanInput().inputMode).toBe('none');
+      expect(scanInput().readOnly).toBe(false);
+      await click(container.querySelector('[aria-label="手动输入库位"]')!);
+      expect(scanInput().inputMode).toBe('text');
+      expect(document.activeElement).toBe(scanInput());
+      // Submission returns to scanning; it does not persist manual mode across locations.
+      await query('102-013-1');
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+      expect(scanInput().inputMode).toBe('none');
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: originalAgent });
     }
   });
   it('confirms sparse empty locations and saves immediately with zero SKU rows', async () => {

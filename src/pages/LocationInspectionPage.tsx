@@ -122,6 +122,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const virtualKeyboard = scannerKeyboard();
   const focusScanner = (manual = false) => {
+    setManualInput(manual);
     focusScannerInput(scanInputRef.current, manual);
     if (!manual && !androidScanner) scanInputRef.current?.select();
   };
@@ -226,7 +227,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       flushed = true;
     }
     const id = ++requestId.current;
-    if (androidScanner && manualInput && !virtualKeyboard) scanInputRef.current?.blur();
+    if (manualInput) scanInputRef.current?.blur();
     setManualInput(false);
     if (locData && !flushed) locationDrafts.set(locationKey(locData.hallId, locData.locationCode, locData.referenceImportId), {
       data: locData, skus: skuList, photos, notes: locationNotes, empty: isEmptyConfirmed, uploads,
@@ -751,7 +752,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
               ref={scanInputRef}
               type="text"
               dir="ltr"
-              inputMode={manualInput ? 'text' : androidScanner ? undefined : 'none'}
+              inputMode={manualInput ? 'text' : 'none'}
               value={inputLoc}
               onChange={handleScanChange}
               onKeyDown={handleScanKeyDown}
@@ -783,8 +784,6 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             aria-label={manualInput ? t('scannerMode') : t('manualLocation')}
             aria-pressed={manualInput}
             onClick={() => {
-              setManualInput(!manualInput);
-              if (manualInput) scanInputRef.current?.blur();
               focusScanner(!manualInput);
             }}
             className="text-slate-600 bg-slate-100 px-2 rounded-lg"
@@ -1329,7 +1328,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 <input
                   ref={surplusSkuRef}
                   type="text"
-                  inputMode={manualInput ? 'text' : androidScanner ? undefined : 'none'}
+                  inputMode={manualInput ? 'text' : 'none'}
                   {...{ virtualkeyboardpolicy: !manualInput && virtualKeyboard ? 'manual' : 'auto' }}
                   value={surplusSkuInput}
                   onChange={(e) => setSurplusSkuInput(e.target.value.toUpperCase())}
@@ -1355,7 +1354,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                 <input
                   ref={surplusBarcodeRef}
                   type="text"
-                  inputMode={manualInput ? 'text' : androidScanner ? undefined : 'none'}
+                  inputMode={manualInput ? 'text' : 'none'}
                   {...{ virtualkeyboardpolicy: !manualInput && virtualKeyboard ? 'manual' : 'auto' }}
                   value={surplusBarcodeInput}
                   onChange={(e) => setSurplusBarcodeInput(e.target.value.trim())}

@@ -9,32 +9,21 @@ export function scannerKeyboard(): VirtualKeyboard | undefined {
     ? keyboard as VirtualKeyboard : undefined;
 }
 
-// Keep scanner inputs editable. Explicit keyboard requests must remain in the click event.
+// The input stays editable for physical/IME scanner input in both modes.
+// Manual mode must be entered synchronously from the keyboard button's click.
 export function focusScannerInput(input: HTMLInputElement | null, manual = false): void {
   if (!input) return;
-  const android = /Android/i.test(navigator.userAgent);
   const keyboard = scannerKeyboard();
+  // Refocus after a mode change: Android may retain the keyboard choice of an
+  // already-focused input. Blur also dismisses the previous manual keyboard.
+  if (manual || input.inputMode !== 'none') input.blur();
   input.readOnly = false;
-  if (manual) input.inputMode = 'text';
-  else if (android) input.removeAttribute('inputmode');
-  else input.inputMode = 'none';
+  input.inputMode = manual ? 'text' : 'none';
   input.setAttribute('virtualkeyboardpolicy', !manual && keyboard ? 'manual' : 'auto');
-
-  if (manual) {
-    // Re-focus inside the user gesture, after enabling the browser's ordinary keyboard path.
-    input.blur();
-    input.focus();
-  } else if (document.activeElement !== input) {
-    // Older Android browsers lack the API. This suppresses the focus-time keyboard request
-    // where supported; restore editability immediately so the next scan is never blocked.
-    input.readOnly = android && !keyboard;
-    try { input.focus(); } finally { input.readOnly = false; }
-  }
-  try {
-    if (manual) keyboard?.show();
-    else keyboard?.hide();
-  } catch {
-    // The API is experimental; an unsupported/denied call must not break text input.
-    input.setAttribute('virtualkeyboardpolicy', 'auto');
+  input.focus({ preventScroll: true });
+  // Standard text-mode focus opens manual input without an experimental API.
+  // A best-effort hide must never change scanner attributes or disable editing.
+  if (!manual) {
+    try { keyboard?.hide(); } catch { /* inputMode and blur remain the fallback */ }
   }
 }
