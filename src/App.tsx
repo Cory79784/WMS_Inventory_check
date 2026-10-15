@@ -10,6 +10,8 @@ import { ArchitecturePage } from './pages/ArchitecturePage';
 import { WMSImportPage } from './pages/WMSImportPage';
 import { InspectionExportPage } from './pages/InspectionExportPage';
 import { HallId } from './types';
+import { readSessionHall, rememberSessionHall, clearSessionHall } from './utils/sessionHall';
+import { isHandheldDevice } from './utils/device';
 
 export const App: React.FC = () => {
   useEffect(() => {
@@ -36,6 +38,7 @@ export const App: React.FC = () => {
         return;
       }
       exiting = true;
+      clearSessionHall();
       window.history.back();
     };
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -51,28 +54,37 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  const [currentHall, setCurrentHall] = useState<HallId>('H1');
+  const [currentHall, setCurrentHall] = useState<HallId>(readSessionHall);
+  const allowFileTransfer = !isHandheldDevice();
+  const selectHall = (hall: HallId) => {
+    rememberSessionHall(hall);
+    setCurrentHall(hall);
+  };
   const [activeView, setActiveView] = useState<'inspect' | 'test' | 'import' | 'export' | 'arch'>('inspect');
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
       <Header
         currentHall={currentHall}
-        onSelectHall={setCurrentHall}
+        onSelectHall={selectHall}
         activeView={activeView}
-        onSelectView={setActiveView}
+        allowFileTransfer={allowFileTransfer}
+        onSelectView={view => {
+          if (allowFileTransfer || (view !== 'import' && view !== 'export')) setActiveView(view);
+        }}
       />
 
       <main className="flex-1 pb-4">
         {activeView === 'inspect' && (
           <LocationInspectionPage
             currentHall={currentHall}
-            onOpenImport={() => setActiveView('import')}
+            allowFileTransfer={allowFileTransfer}
+            onOpenImport={() => { if (allowFileTransfer) setActiveView('import'); }}
             onOpenTest={() => setActiveView('test')}
           />
         )}
-        {activeView === 'import' && <WMSImportPage currentHall={currentHall} />}
-        {activeView === 'export' && <InspectionExportPage currentHall={currentHall} />}
+        {allowFileTransfer && activeView === 'import' && <WMSImportPage currentHall={currentHall} />}
+        {allowFileTransfer && activeView === 'export' && <InspectionExportPage currentHall={currentHall} />}
         {activeView === 'test' && <DeviceTestPage />}
         {activeView === 'arch' && <ArchitecturePage />}
       </main>

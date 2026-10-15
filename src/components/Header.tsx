@@ -2,9 +2,11 @@ import React from 'react';
 import { t } from '../i18n';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { HallId } from '../types';
+import { isHandheldDevice } from '../utils/device';
 import { Warehouse, ClipboardCheck, UploadCloud, Cpu, Download } from 'lucide-react';
 
 interface HeaderProps {
+  allowFileTransfer?: boolean;
   currentHall: HallId;
   onSelectHall: (hall: HallId) => void;
   activeView: 'inspect' | 'test' | 'import' | 'export' | 'arch';
@@ -16,6 +18,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectHall,
   activeView,
   onSelectView,
+  allowFileTransfer = !isHandheldDevice(),
 }) => {
   return (
     <header className="sticky top-0 z-50 bg-slate-900 text-white shadow-md">
@@ -62,6 +65,7 @@ export const Header: React.FC<HeaderProps> = ({
             <ClipboardCheck className="w-3.5 h-3.5" />
             {t('inspect')}
           </button>
+          {allowFileTransfer && <>
           <button
             type="button"
             onClick={() => onSelectView('import')}
@@ -86,6 +90,7 @@ export const Header: React.FC<HeaderProps> = ({
             <Download className="w-3.5 h-3.5" />
             {t('export')}
           </button>
+          </>}
           <button
             type="button"
             onClick={() => onSelectView('test')}
