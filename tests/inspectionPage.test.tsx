@@ -599,6 +599,22 @@ describe('PDA inspection UI interactions', () => {
     expect(button('导出全部核查结果')).toBeTruthy();
   });
 
+  it('hides the empty-WMS import shortcut on Android without removing the scanner', async () => {
+    const originalAgent = navigator.userAgent;
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Android PDA Chrome' });
+    api.fetchActiveVersion.mockResolvedValue({ hasActiveVersion: false });
+    try {
+      await act(async () => root.unmount()); root = createRoot(container);
+      await act(async () => root.render(<Page currentHall="H2" onOpenImport={() => {}} onOpenTest={() => {}} />));
+      expect(button('PC 上传 Excel')).toBeUndefined();
+      expect(scanInput()).toBeTruthy();
+      await query('102-012-1');
+      expect(api.fetchLocationAudit).toHaveBeenLastCalledWith('H2', '102-012-1');
+      expect(container.querySelector('[data-testid="wms-import-time"]')?.textContent).toContain('V1');
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: originalAgent });
+    }
+  });
   it('requires and uploads the original photo for unknown goods before saving its link', async () => {
     await query('124-028-1');
     await click(button('+ 现场多货'));

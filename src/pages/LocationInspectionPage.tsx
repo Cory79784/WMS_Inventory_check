@@ -3,6 +3,7 @@ import { t } from '../i18n';
 import { registerLanguageSafety } from '../i18n/safety';
 import { ReturnFields } from '../components/ReturnFields';
 import { focusScannerInput, scannerKeyboard } from '../utils/scannerInput';
+import { isHandheldDevice } from '../utils/device';
 import { HallId, LocationAuditData, LocationSkuItem, InspectionPhotoItem } from '../types';
 import {
   fetchLocationAudit,
@@ -58,6 +59,7 @@ const hasDraftChanges = (draft: LocationDraft) =>
 
 interface LocationInspectionPageProps {
   currentHall: HallId;
+  allowFileTransfer?: boolean;
   onOpenImport: () => void;
   onOpenTest: () => void;
 }
@@ -66,6 +68,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   currentHall,
   onOpenImport,
   onOpenTest,
+  allowFileTransfer = !isHandheldDevice(),
 }) => {
   // Input search state
   const [inputLoc, setInputLoc] = useState('');
@@ -725,7 +728,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5">
-          {!activeVersionInfo && (
+          {!activeVersionInfo && allowFileTransfer && (
             <button
               type="button"
               onClick={onOpenImport}
