@@ -1,3 +1,5 @@
+export type ExportScope = 'history' | 'latest';
+
 export type HallId = 'H1' | 'H2' | 'H3';
 
 export interface Hall {
@@ -54,6 +56,7 @@ export interface PhotoUploadResult {
 }
 
 export interface LocationSkuItem {
+  lineId?: string;
   sku: string;
   barcode: string;
   eBarcode: string;
@@ -73,6 +76,7 @@ export interface LocationSkuItem {
 }
 
 export interface InspectionPhotoItem {
+  lineId?: string | null;
   photoId: string;
   objectKey: string;
   sku?: string;
@@ -80,6 +84,8 @@ export interface InspectionPhotoItem {
 }
 
 export interface InspectionExportRow {
+  rowType?: 'sku' | 'location';
+  lineId?: string;
   inspectionId: string;
   hallId: string;
   locationCode: string;

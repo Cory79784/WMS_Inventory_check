@@ -58,7 +58,7 @@ describe('Excel inspection results', () => {
     }
   });
 
-  it('marks only completely normal photographed locations and exports return codes as text', async () => {
+  it('marks photos per row rather than per location and exports return codes as text', async () => {
     const workbook = await buildInspectionWorkbook([
       { ...row, inspectionId: 'normal-photo', differenceQty: 0, actualQty: 10, discrepancyType: 'NORMAL' },
       { ...row, inspectionId: 'mixed', differenceQty: 0, actualQty: 10, discrepancyType: 'NORMAL' },
@@ -71,8 +71,8 @@ describe('Excel inspection results', () => {
     expect(sheet.getRow(1).getCell(15).value).toBe('照片标记');
     expect(sheet.getRow(1).getCell(17).value).toBe('退货码或跟踪号（如有）');
     expect(sheet.getRow(2).getCell(15).value).toBe('正常·有照片');
-    expect(sheet.getRow(3).getCell(15).value).toBe('');
-    expect(sheet.getRow(4).getCell(15).value).toBe('');
+    expect(sheet.getRow(3).getCell(15).value).toBe('正常·有照片');
+    expect(sheet.getRow(4).getCell(15).value).toBe('有照片');
     expect(sheet.getRow(4).getCell(16).value).toBe('是');
     expect(sheet.getRow(4).getCell(17).value).toBe('000RET001');
     expect(sheet.getRow(5).getCell(17).value).toBe('0001234567');
@@ -100,5 +100,37 @@ describe('Excel inspection results', () => {
     await expect(buildInspectionWorkbook([row], async () => {
       throw new Error('Photo missing');
     })).rejects.toThrow('Photo missing');
+  });
+});
+
+describe('Filtered Excel image placement', () => {
+  it('places mixed-aspect photos inside their final filtered row, with two-cell anchors and no duplicate media', async () => {
+    // The excluded source rows never enter workbook generation.
+    const filtered=[{...row,lineId:'extra1',photoKeys:['portrait','landscape']},
+      {...row,lineId:'extra2',sku:'NO-PHOTO',photoKeys:[]},
+      {...row,lineId:'extra3',sku:'THIRD',photoKeys:['portrait']}];
+    const workbook=await buildInspectionWorkbook(filtered,async key=>({base64:originalPng,extension:'png',
+      width:key==='portrait'?80:320,height:key==='portrait'?240:80}));
+    const buffer=await workbook.xlsx.writeBuffer();const restored=new ExcelJS.Workbook();await restored.xlsx.load(buffer);
+    const sheet=restored.worksheets[0];const images=sheet.getImages();
+    expect(images.map(image=>image.range.tl.nativeRow)).toEqual([1,1,3]);
+    expect(images.map(image=>image.range.tl.nativeCol)).toEqual([17,18,17]);
+    for(const image of images){
+      expect(image.range.br.nativeRow).toBe(image.range.tl.nativeRow);
+      expect(image.range.br.nativeCol).toBe(image.range.tl.nativeCol);
+      expect(image.range.br.nativeRowOff).toBeLessThan(90*12700);
+      expect(image.range.br.nativeColOff).toBeLessThan((24*7+5)*9525);
+      expect(image.range.br.nativeRowOff).toBeGreaterThan(image.range.tl.nativeRowOff);
+    }
+    expect(sheet.getRow(3).getCell(3).value).toBe('NO-PHOTO');
+    const zip=await JSZip.loadAsync(buffer);const drawing=await zip.file('xl/drawings/drawing1.xml')!.async('string');
+    expect((drawing.match(/editAs="twoCell"/g)||[])).toHaveLength(3);
+    expect(Object.keys(zip.files).filter(name=>name.startsWith('xl/media/')&&!zip.files[name].dir)).toHaveLength(2);
+    // Excel receives move-and-size-with-cells anchors; actual filtering remains a desktop Excel acceptance step.
+  });
+  it('keeps location evidence separate and leaves its quantity cells blank', async () => {
+    const workbook=await buildInspectionWorkbook([{...row,rowType:'location',sku:'',notes:'货架问题',photoKeys:[]}],async()=>{throw new Error('unused');});
+    expect(workbook.worksheets[0].getCell('I2').value).toBe('库位存证');
+    for(const col of ['F','G','H']) expect(workbook.worksheets[0].getCell(`${col}2`).value).toBe('');
   });
 });

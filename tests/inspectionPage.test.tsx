@@ -449,7 +449,7 @@ describe('PDA inspection UI interactions', () => {
       await act(async () => { await new Promise(resolve => setTimeout(resolve, 950)); });
       expect(api.saveLocationInspection).toHaveBeenCalledWith(expect.objectContaining({
         locationCode: '113-063-1', status: 'IN_PROGRESS',
-        photos: [{ photoId: 'pda-1', objectKey: 'inspections/H1/pda.jpg', sku: undefined }],
+        photos: [{ photoId: 'pda-1', objectKey: 'inspections/H1/pda.jpg', sku: undefined, lineId: null }],
       }));
       expect(container.querySelector('img[src="blob:pda-capture"]')).toBeTruthy();
       expect(container.textContent).not.toContain('照片等待保存');
@@ -531,7 +531,7 @@ describe('PDA inspection UI interactions', () => {
       await click(button('保存本库位核查'));
       expect(api.saveLocationInspection).toHaveBeenCalledWith(expect.objectContaining({
         notes: '',
-        photos: [{ photoId: 'capture-1', objectKey: 'inspections/H1/capture.jpg', sku: undefined }],
+        photos: [{ photoId: 'capture-1', objectKey: 'inspections/H1/capture.jpg', sku: undefined, lineId: null }],
       }));
     } finally {
       (globalThis.URL as any).createObjectURL = prior;
@@ -632,9 +632,34 @@ describe('PDA inspection UI interactions', () => {
     expect(api.uploadInspectionPhoto.mock.calls[0][0]).toBe(file);
     await click(button('保存本库位核查'));
     expect(api.saveLocationInspection).toHaveBeenCalledWith(expect.objectContaining({
-      photos: [{ photoId: 'unknown-photo', objectKey: 'original.jpg', sku: '无SKU未知品' }],
+      photos: [expect.objectContaining({ photoId: 'unknown-photo', objectKey: 'original.jpg', sku: '无SKU未知品', lineId: expect.any(String) })],
       skus: [expect.objectContaining({ discrepancyType: 'NO_SKU_SURPLUS' })],
     }));
+  });
+  it('binds each unknown-surplus photo to its own stable line and autosaves manual reassignment', async () => {
+    await query('124-080-1');
+    for (let i=1;i<=2;i++) {
+      api.uploadInspectionPhoto.mockResolvedValueOnce({photoId:`unknown-${i}`,objectKey:`unknown-${i}.jpg`});
+      await click(button('+ 现场多货')); await click(button('无 SKU 货物'));
+      const file=new window.File([`photo${i}`],`unknown-${i}.jpg`,{type:'image/jpeg'});
+      const input=container.querySelector('input[type="file"]:not([multiple])')!;
+      Object.defineProperty(input,'files',{configurable:true,value:[file]});
+      await act(async()=>{input.dispatchEvent(new window.Event('change',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,10));});
+      await click(button('确认添加多货'));
+    }
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,950));});
+    const payload=api.saveLocationInspection.mock.calls.at(-1)![0];
+    expect(payload.skus).toHaveLength(2); expect(payload.photos).toHaveLength(2);
+    expect(payload.skus[0].lineId).not.toBe(payload.skus[1].lineId);
+    expect(payload.photos.map((photo:any)=>photo.lineId)).toEqual(payload.skus.map((sku:any)=>sku.lineId));
+    const target=container.querySelector('select[aria-label="照片关联到 1"]') as HTMLSelectElement
+      || Array.from(container.querySelectorAll('select')).find(select=>select.getAttribute('aria-label')?.endsWith(' 1'))!;
+    expect(target).toBeTruthy();
+    await act(async()=>{target.value='book:SKU:0';target.dispatchEvent(new window.Event('change',{bubbles:true}));});
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,950));});
+    const reassigned=api.saveLocationInspection.mock.calls.at(-1)![0];
+    expect(reassigned.photos[0].lineId).toBe('book:SKU:0');
+    expect(reassigned.photos[1].lineId).toBe(payload.skus[1].lineId);
   });
   it('preserves long Barcode and inventory order with Arabic labels and LTR codes', async () => {
     const storage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');

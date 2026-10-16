@@ -1,0 +1,29 @@
+import React, { act } from 'react';
+import { beforeAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { createRequire } from 'node:module';
+const require=createRequire(import.meta.url);const {JSDOM}=require('jsdom');
+const download=vi.hoisted(()=>vi.fn().mockResolvedValue(undefined));
+vi.mock('../src/services/inspectionExport',()=>({downloadInspectionResults:download}));
+let root:any,container:HTMLDivElement,Page:any,createRoot:any;
+beforeAll(async()=>{
+ const dom=new JSDOM('<!doctype html><html><body></body></html>',{url:'https://audit.test'});
+ Object.assign(globalThis,{window:dom.window,document:dom.window.document,IS_REACT_ACT_ENVIRONMENT:true});
+ Object.defineProperty(globalThis,'navigator',{configurable:true,value:dom.window.navigator});
+ createRoot=(await import('react-dom/client')).createRoot;Page=(await import('../src/pages/InspectionExportPage')).InspectionExportPage;
+});
+afterEach(async()=>{await act(async()=>root.unmount());container.remove();vi.clearAllMocks();});
+describe('Explicit export version scope',()=>{
+ it('passes the selected scope for both export modes',async()=>{
+  container=document.createElement('div');document.body.appendChild(container);root=createRoot(container);
+  await act(async()=>root.render(<Page currentHall="H2"/>));
+  const selects=container.querySelectorAll('select');
+  expect(selects).toHaveLength(1);expect(selects[0].value).toBe('history');
+  await act(async()=>{selects[0].value='latest';selects[0].dispatchEvent(new window.Event('change',{bubbles:true}));});
+  expect(container.textContent).toContain('核查结果导出');
+  for(const [text,mode] of [['仅导出差异','differences'],['导出全部核查结果','all']]){
+   const button=Array.from(container.querySelectorAll('button')).find(item=>item.textContent===text)!;
+   await act(async()=>button.dispatchEvent(new window.MouseEvent('click',{bubbles:true})));
+   expect(download).toHaveBeenLastCalledWith('H2',mode,'latest');
+  }
+ });
+});

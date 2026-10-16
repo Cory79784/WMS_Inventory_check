@@ -35,6 +35,7 @@ interface PhotoUpload {
   progress: number;
   status: 'uploading' | 'saved' | 'error';
   photoId?: string;
+  lineId?: string | null;
   sku?: string;
   previewUrl?: string;
 }
@@ -98,7 +99,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   // Editable inspection state for current location
   const [skuList, setSkuList] = useState<LocationSkuItem[]>([]);
   const [photos, setPhotos] = useState<InspectionPhotoItem[]>([]);
-  const [photoTargetSku, setPhotoTargetSku] = useState('');
+  const [photoTargetLine, setPhotoTargetLine] = useState('');
   const [locationNotes, setLocationNotes] = useState('');
   const [isEmptyConfirmed, setIsEmptyConfirmed] = useState(false);
 
@@ -243,9 +244,12 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       const freshData = await fetchLocationAudit(currentHall, loc);
       const cachedDraft = locationDrafts.get(locationKey(currentHall, loc, freshData.referenceImportId));
       const draft = cachedDraft && hasDraftChanges(cachedDraft) ? cachedDraft : undefined;
-      const data = draft?.data || freshData;
+      const data = draft?.data || { ...freshData, skus: freshData.skus.map((item: LocationSkuItem, index: number) => ({
+        ...item, lineId: item.lineId || `book:${item.sku}:${index}`,
+      })) };
       if (id !== requestId.current) return;
       setLocData(data);
+      setPhotoTargetLine('');
       setInputLoc(androidScanner ? '' : data.locationCode);
 
       // Initialize SKU inspection state
@@ -469,6 +473,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     setSurplusUploadFailed(false);
 
     try {
+      const newLineId = `extra:${Date.now()}_${Math.random().toString(36).slice(2)}`;
       let uploadedPhotoInfo: any = null;
       if (surplusPhotoFile && locData) {
         uploadedPhotoInfo = await uploadInspectionPhoto(
@@ -479,11 +484,12 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
         );
         if (uploadedPhotoInfo?.photoId) {
           setUploads((prev) => [...prev, {
-            id: uploadedPhotoInfo.photoId, file: surplusPhotoFile, progress: 100, status: 'saved',
+            id: uploadedPhotoInfo.photoId, photoId: uploadedPhotoInfo.photoId, lineId: newLineId, file: surplusPhotoFile, progress: 100, status: 'saved',
           }]);
           setPhotos((prev) => [
             ...prev,
             {
+              lineId: newLineId,
               photoId: uploadedPhotoInfo.photoId,
               objectKey: uploadedPhotoInfo.objectKey,
               previewUrl: uploadedPhotoInfo.previewUrl,
@@ -494,6 +500,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       }
 
       const newSurplusItem: LocationSkuItem = {
+        lineId: newLineId,
         sku: surplusMode === 'SKU' ? surplusSkuInput.trim() : (surplusMode === 'BARCODE' ? `条码:${surplusBarcodeInput.trim()}` : '无SKU未知品'),
         barcode: surplusMode === 'BARCODE' ? surplusBarcodeInput.trim() : '',
         eBarcode: '',
@@ -562,7 +569,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       const localPreview = task.previewUrl || result.previewUrl;
       update({ status: 'saved', progress: 100, photoId: result.photoId }, {
         photoId: result.photoId, objectKey: result.objectKey,
-        previewUrl: localPreview, sku: task.sku || undefined,
+        previewUrl: localPreview, lineId: task.lineId ?? null, sku: task.sku || undefined,
       });
       triggerHaptic(true);
     } catch (error) {
@@ -579,7 +586,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     const tasks: PhotoUpload[] = files.map((file) => ({
       // UI queue identifiers are not authentication tokens; support older PDA browsers.
       id: typeof globalThis.crypto?.randomUUID === 'function' ? globalThis.crypto.randomUUID()
-        : `upload_${Date.now()}_${Math.random().toString(36).slice(2)}`, file, progress: 0, status: 'uploading', sku: photoTargetSku || undefined,
+        : `upload_${Date.now()}_${Math.random().toString(36).slice(2)}`, file, progress: 0, status: 'uploading', lineId: photoTargetLine || null, sku: skuList.find(item => item.lineId === photoTargetLine)?.sku,
       previewUrl: (() => { try { return URL.createObjectURL(file); } catch { return undefined; } })(),
     }));
     const key = locationKey(locData.hallId, locData.locationCode, locData.referenceImportId);
@@ -623,6 +630,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       notes,
       reset,
       skus: items.filter((s) => s.actualQty !== null && s.actualQty !== undefined).map((s) => ({
+        lineId: s.lineId,
         sku: s.sku,
         barcode: s.barcode,
         eBarcode: s.eBarcode,
@@ -639,6 +647,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       photos: linkedPhotos.map((p) => ({
         photoId: p.photoId,
         objectKey: p.objectKey,
+        lineId: p.lineId ?? null,
         sku: p.sku,
       })),
     };
@@ -652,7 +661,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       } };
       const key = locationKey(locData.hallId, locData.locationCode, locData.referenceImportId);
       const persistedSignature = JSON.stringify([key, items, empty, notes,
-        linkedPhotos.map(p => [p.photoId, p.objectKey, p.sku])]);
+        linkedPhotos.map(p => [p.photoId, p.objectKey, p.lineId, p.sku])]);
       const newerDraftExists = latestDraftSignature.current !== startingSignature && latestDraftSignature.current !== persistedSignature;
       if (!newerDraftExists) {
         locationDrafts.set(key, { data: savedData, skus: items, photos: linkedPhotos,
@@ -689,9 +698,9 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   // a later edit remains on screen and will be persisted by the next debounce cycle.
   const saveKey = locData ? locationKey(locData.hallId, locData.locationCode, locData.referenceImportId) : '';
   const currentSignature = locData ? JSON.stringify([saveKey, skuList, isEmptyConfirmed, locationNotes,
-    photos.map(p => [p.photoId, p.objectKey, p.sku])]) : '';
+    photos.map(p => [p.photoId, p.objectKey, p.lineId, p.sku])]) : '';
   latestDraftSignature.current = currentSignature;
-  const savedSignature = locData ? JSON.stringify([saveKey, locData.skus, Boolean(locData.inspection?.isEmptyConfirmed), locData.inspection?.notes || '', (locData.inspection?.photos || []).map(p => [p.photoId, p.objectKey, p.sku])]) : '';
+  const savedSignature = locData ? JSON.stringify([saveKey, locData.skus, Boolean(locData.inspection?.isEmptyConfirmed), locData.inspection?.notes || '', (locData.inspection?.photos || []).map(p => [p.photoId, p.objectKey, p.lineId, p.sku])]) : '';
   unsavedAutoChanges.current = Boolean(locData && currentSignature !== savedSignature);
   useEffect(() => {
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
@@ -699,7 +708,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     if (saving || loading || photoBusy || photoFailed || uploadingSurplusPhoto || uploadsInFlight.current > 0
       || shortageModalSku || showSurplusModal) return;
     const baseline = JSON.stringify([saveKey, locData.skus, Boolean(locData.inspection?.isEmptyConfirmed),
-      locData.inspection?.notes || '', (locData.inspection?.photos || []).map(p => [p.photoId, p.objectKey, p.sku])]);
+      locData.inspection?.notes || '', (locData.inspection?.photos || []).map(p => [p.photoId, p.objectKey, p.lineId, p.sku])]);
     if (currentSignature === baseline || currentSignature === lastAutoAttempt.current) return;
     autoSaveTimer.current = setTimeout(() => {
       lastAutoAttempt.current = currentSignature;
@@ -956,7 +965,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
               return (
                 <div
-                  key={`${item.sku}_${idx}`}
+                  key={item.lineId || `${item.sku}_${idx}`}
                   className={`bg-white rounded-xl border p-3 shadow-sm transition ${
                     isShortage
                       ? 'border-red-300 bg-red-50/20'
@@ -1133,11 +1142,11 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
             <label className="block text-xs text-slate-600">
               {t('photoAssign')}
-              <select aria-label={t("photoTarget")} value={photoTargetSku} onChange={event => setPhotoTargetSku(event.target.value)}
+              <select aria-label={t("photoTarget")} value={photoTargetLine} onChange={event => setPhotoTargetLine(event.target.value)}
                 className="ml-2 border border-slate-300 rounded px-2 py-1 bg-white max-w-full">
                 <option value="">{t('wholeLocation')}</option>
                 {skuList.map((item, index) => (
-                  <option key={index} value={item.sku}>{item.sku || t('noSku')} · {item.discrepancyType || t('unchecked')}</option>
+                  <option key={item.lineId || index} value={item.lineId}>{item.sku || t('noSku')} · {item.discrepancyType || t('unchecked')} · #{index + 1}</option>
                 ))}
               </select>
             </label>
@@ -1161,7 +1170,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             {photoFailed && <p className="text-xs text-red-600">{t('photoRetry')}</p>}
             {photos.length > 0 && (
               <div className="flex items-center gap-2 overflow-x-auto py-1">
-                {photos.map((p) => (
+                {photos.map((p, photoIndex) => (
                   <div key={p.photoId} className="relative shrink-0 space-y-1">
                     <img
                       src={p.previewUrl || `/api/inventory/inspection/photo?key=${encodeURIComponent(p.objectKey)}`}
@@ -1169,6 +1178,18 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
                       className="w-16 h-16 object-cover rounded-lg border border-slate-200"
                     />
                     <span className="block text-[10px] truncate max-w-20">{p.sku || t('locationPhoto')}</span>
+                    <select aria-label={`${t('photoTarget')} ${photoIndex + 1}`} value={p.lineId || ''} disabled={photoBusy || saving}
+                      className="text-[10px] border rounded max-w-32" onChange={event => {
+                        const lineId = event.target.value || null;
+                        setPhotos(prev => prev.map(photo => photo.photoId === p.photoId ? {
+                          ...photo, lineId, sku: skuList.find(item => item.lineId === lineId)?.sku,
+                        } : photo));
+                      }}>
+                      <option value="">{t('wholeLocation')}</option>
+                      {skuList.map((item, index) => <option key={item.lineId || index} value={item.lineId}>
+                        {item.sku || t('noSku')} · {item.discrepancyType || t('unchecked')} · #{index + 1}
+                      </option>)}
+                    </select>
                   </div>
                 ))}
               </div>

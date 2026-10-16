@@ -1,5 +1,6 @@
 import { Env, AuthUser } from '../types';
 import { authenticateRequest } from '../auth/access';
+import { inspectionLineId, skuInspectionId } from '../inspectionLineIds';
 import { adjacentLocation } from '../locationNavigation';
 import { exportInspectionResults } from './inspection-export';
 import { decodeInspectionNotes, encodeInspectionNotes } from '../../src/utils/inspectionNotes';
@@ -610,7 +611,7 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
         savedSkus = skuRecords.results;
 
         const photoRecords = await env.DB.prepare(`
-          SELECT p.*, si.sku AS linked_sku FROM inspection_photos p LEFT JOIN sku_inspections si ON si.id = p.sku_inspection_id WHERE p.inspection_id = ? ORDER BY p.captured_at ASC
+          SELECT p.*, si.sku AS linked_sku, pl.line_key FROM inspection_photos p LEFT JOIN sku_inspections si ON si.id = p.sku_inspection_id LEFT JOIN inspection_photo_lines pl ON pl.photo_id = p.photo_id WHERE p.inspection_id = ? ORDER BY p.captured_at ASC
         `).bind(inspection.inspection_id).all();
         savedPhotos = photoRecords.results;
       }
@@ -621,6 +622,7 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
         const inspMatch = savedSkus.find((s) => s.sku === r.sku && s.system_qty === r.system_qty);
         if (inspMatch) matchedSkuIds.add(inspMatch.id);
         return {
+          lineId: inspMatch ? inspectionLineId(inspection!.inspection_id, inspMatch.id) : `book:${r.sku}`,
           sku: r.sku,
           barcode: r.barcode || '',
           eBarcode: r.e_barcode || '',
@@ -640,6 +642,7 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
 
       // Retain extra saved rows, including returns sharing a book-stock SKU.
       const surplusSkus = savedSkus.filter((s) => !matchedSkuIds.has(s.id)).map((s) => ({
+        lineId: inspectionLineId(inspection!.inspection_id, s.id),
         sku: s.sku || '',
         barcode: s.barcode || '',
         eBarcode: s.e_barcode || '',
@@ -687,7 +690,12 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
             isEmptyConfirmed: Boolean(inspection.is_empty_confirmed),
             notes: inspection.notes || '',
             completedAt: inspection.completed_at,
-            photos: savedPhotos.map((p) => ({ photoId: p.photo_id, objectKey: p.object_key, sku: p.linked_sku || undefined })),
+            photos: savedPhotos.map((p) => {
+              const lineId = p.line_key || (p.sku_inspection_id && savedSkus.some(s => s.id === p.sku_inspection_id)
+                ? inspectionLineId(inspection.inspection_id, p.sku_inspection_id) : null);
+              return { photoId: p.photo_id, objectKey: p.object_key, lineId,
+                sku: allSkus.find(s => s.lineId === lineId)?.sku || p.linked_sku || undefined };
+            }),
           } : null,
           navigation: {
             currentIndex: null,
@@ -715,6 +723,7 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
         notes?: string;
         reset?: boolean;
         skus: Array<{
+          lineId?: string;
           sku?: string;
           barcode?: string;
           eBarcode?: string;
@@ -729,6 +738,7 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
         photos?: Array<{
           photoId: string;
           objectKey: string;
+          lineId?: string | null;
           sku?: string;
         }>;
       };
@@ -795,8 +805,6 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
           status === 'IN_PROGRESS' ? null : nowUtc
         ),
 
-        // 2. Clear previous sku_inspections for clean replace
-        env.DB.prepare(`DELETE FROM sku_inspections WHERE inspection_id = ?`).bind(inspectionId),
       ];
 
       if (previousEvidence) stmts.push(
@@ -805,51 +813,66 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
       );
       if (body.reset) stmts.push(env.DB.prepare('DELETE FROM inspection_photos WHERE inspection_id = ?').bind(inspectionId));
 
-      const skuPhotoIds = new Map<string, string>();
-
-      // 3. Insert new sku_inspections
-      for (const item of body.skus || []) {
-        const skuInspId = `sinsp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-        if (item.sku && !skuPhotoIds.has(item.sku)) skuPhotoIds.set(item.sku, skuInspId);
-        stmts.push(
-          env.DB.prepare(`
-            INSERT INTO sku_inspections (
-              id, inspection_id, sku, barcode, e_barcode,
-              system_qty, actual_qty, difference_qty, discrepancy_type, notes, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `).bind(
-            skuInspId,
-            inspectionId,
-            item.sku || null,
-            item.barcode || null,
-            item.eBarcode || null,
-            item.systemQty || 0,
-            item.actualQty ?? 0,
-            item.differenceQty ?? 0,
-            item.discrepancyType || 'NORMAL',
-            encodeInspectionNotes(item.notes, item.isReturn === true, item.returnCode) || null,
-            nowUtc
-          )
-        );
+      const lines = (body.skus || []).map((item, index) => ({
+        ...item, lineId: item.lineId || `legacy:${index}`,
+      }));
+      const lineIds = lines.map(item => item.lineId);
+      if (lineIds.some(id => typeof id !== 'string' || !id || id.length > 2048) || new Set(lineIds).size !== lineIds.length) {
+        return Response.json({ success: false, error: 'Unique valid line IDs required' }, { status: 400 });
+      }
+      const skuPhotoIds = new Map<string, string[]>();
+      for (const item of lines) {
+        const id = skuInspectionId(inspectionId, item.lineId);
+        const matches = skuPhotoIds.get(item.sku || '') || [];
+        matches.push(id); skuPhotoIds.set(item.sku || '', matches);
+        stmts.push(env.DB.prepare(`
+          INSERT INTO sku_inspections (id, inspection_id, sku, barcode, e_barcode,
+            system_qty, actual_qty, difference_qty, discrepancy_type, notes, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET sku=excluded.sku, barcode=excluded.barcode, e_barcode=excluded.e_barcode,
+            system_qty=excluded.system_qty, actual_qty=excluded.actual_qty, difference_qty=excluded.difference_qty,
+            discrepancy_type=excluded.discrepancy_type, notes=excluded.notes, updated_at=excluded.updated_at
+        `).bind(id, inspectionId, item.sku || null, item.barcode || null, item.eBarcode || null,
+          item.systemQty || 0, item.actualQty ?? 0, item.differenceQty ?? 0, item.discrepancyType || 'NORMAL',
+          encodeInspectionNotes(item.notes, item.isReturn === true, item.returnCode) || null, nowUtc));
+        // Upgrade a legacy ID when a refreshed client resaves; do not orphan omitted photos.
+        stmts.push(env.DB.prepare(`INSERT OR IGNORE INTO inspection_photo_lines (photo_id, line_key)
+          SELECT photo_id, ? FROM inspection_photos WHERE inspection_id=? AND sku_inspection_id=?`)
+          .bind(item.lineId, inspectionId, item.lineId));
+        stmts.push(env.DB.prepare('UPDATE inspection_photos SET sku_inspection_id=? WHERE inspection_id=? AND sku_inspection_id=?')
+          .bind(id, inspectionId, item.lineId));
       }
 
-      // 4. Attach photos to the current SKU record when selected; otherwise to the location.
-      // Existing photo IDs are rebound after each save because SKU inspection IDs are replaced.
       for (const p of body.photos || []) {
-        const skuInspectionId = p.sku ? skuPhotoIds.get(p.sku) || null : null;
+        if (p.lineId != null && (typeof p.lineId !== 'string' || !p.lineId || p.lineId.length > 2048)) {
+          return Response.json({ success: false, error: 'Valid photo line ID required' }, { status: 400 });
+        }
+        // Legacy SKU-only callers are supported only when the SKU identifies exactly one row.
+        const legacyMatches = p.sku ? skuPhotoIds.get(p.sku) || [] : [];
+        const targetLine = p.lineId || (p.lineId === undefined && legacyMatches.length === 1
+          ? inspectionLineId(inspectionId, legacyMatches[0]) : null);
+        const linkedId = targetLine && lineIds.includes(targetLine) ? skuInspectionId(inspectionId, targetLine) : null;
+        const photoId = p.photoId || `photo_${crypto.randomUUID()}`;
         stmts.push(env.DB.prepare(`
           INSERT INTO inspection_photos (photo_id, inspection_id, sku_inspection_id, object_key, captured_at)
           VALUES (?, ?, ?, ?, ?)
-          ON CONFLICT(photo_id) DO UPDATE SET
-            sku_inspection_id = excluded.sku_inspection_id
-        `).bind(
-          p.photoId || `photo_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-          inspectionId,
-          skuInspectionId,
-          p.objectKey,
-          nowUtc
-        ));
+          ON CONFLICT(photo_id) DO UPDATE SET sku_inspection_id=excluded.sku_inspection_id
+            WHERE inspection_photos.inspection_id=excluded.inspection_id AND inspection_photos.object_key=excluded.object_key
+        `).bind(photoId, inspectionId, linkedId, p.objectKey, nowUtc));
+        if (targetLine) stmts.push(env.DB.prepare(`INSERT INTO inspection_photo_lines (photo_id, line_key)
+          SELECT photo_id, ? FROM inspection_photos WHERE photo_id=? AND inspection_id=? AND object_key=?
+          ON CONFLICT(photo_id) DO UPDATE SET line_key=excluded.line_key`)
+          .bind(targetLine, photoId, inspectionId, p.objectKey));
+        else stmts.push(env.DB.prepare(`DELETE FROM inspection_photo_lines WHERE photo_id IN
+          (SELECT photo_id FROM inspection_photos WHERE photo_id=? AND inspection_id=?)`).bind(photoId, inspectionId));
       }
+      // Only remove obsolete count rows, after rebinding photos. Preserve uncertain evidence as location photos.
+      const ids = lineIds.map(id => skuInspectionId(inspectionId, id));
+      const obsolete = ids.length ? `AND id NOT IN (${ids.map(() => '?').join(',')})` : '';
+      stmts.push(env.DB.prepare(`UPDATE inspection_photos SET sku_inspection_id=NULL WHERE inspection_id=?
+        AND sku_inspection_id IN (SELECT id FROM sku_inspections WHERE inspection_id=? ${obsolete})`)
+        .bind(inspectionId, inspectionId, ...ids));
+      stmts.push(env.DB.prepare(`DELETE FROM sku_inspections WHERE inspection_id=? ${obsolete}`).bind(inspectionId, ...ids));
 
       // 5. Audit event
       stmts.push(
