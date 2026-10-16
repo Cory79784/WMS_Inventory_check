@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import type { HallId, InspectionExportRow } from '../types';
+import type { ExportScope, HallId, InspectionExportRow } from '../types';
 
 interface ExportPhoto {
   base64: string;
@@ -45,19 +45,19 @@ export async function buildInspectionWorkbook(
     cell.border = { bottom: { style: 'medium', color: { argb: 'FF57B9D8' } } };
   });
   const images = new Map<string, Promise<{ id: number; width: number; height: number }>>();
-  const abnormalInspections = new Set(rows.filter(result => result.differenceQty !== 0
-    || (result.discrepancyType && result.discrepancyType !== 'NORMAL')).map(result => result.inspectionId));
   const discrepancyLabels: Record<string, string> = {
     NORMAL: '正常', SHORTAGE: '少货', SURPLUS: '多货', UNEXPECTED_SKU: '账外SKU', NO_SKU_SURPLUS: '无SKU多货',
   };
   for (const [resultIndex, result] of rows.entries()) {
     const row = sheet.addRow({ ...result,
+      ...(result.rowType === 'location' ? { systemQty: '', actualQty: '', differenceQty: '' } : {}),
       version: `V${result.versionNumber} (${result.referenceImportId})`,
-      discrepancyLabel: result.isEmptyConfirmed ? '确认空库位'
+      discrepancyLabel: result.rowType === 'location' ? (result.isEmptyConfirmed ? '确认空库位' : '库位存证') : result.isEmptyConfirmed ? '确认空库位'
         : discrepancyLabels[result.discrepancyType || ''] || (result.differenceQty < 0 ? '少货' : result.differenceQty > 0 ? '多货' : '正常'),
       statusLabel: result.status === 'PENDING_REVIEW' ? '待复核' : '已核查',
-      photoLabel: result.photoKeys.length && !abnormalInspections.has(result.inspectionId)
-        && result.status !== 'PENDING_REVIEW' ? '正常·有照片' : '',
+      photoLabel: result.photoKeys.length ? (result.rowType === 'location' ? '库位存证'
+        : result.differenceQty === 0 && (!result.discrepancyType || result.discrepancyType === 'NORMAL') && !result.isReturn
+          ? '正常·有照片' : '有照片') : '',
       returnLabel: result.isReturn ? '是' : '',
       returnCode: result.isReturn ? result.returnCode || '' : '',
     });
@@ -99,12 +99,18 @@ export async function buildInspectionWorkbook(
         })));
       }
       const image = await images.get(key)!;
+      if (!(image.width > 0 && image.height > 0)) throw new Error('Invalid photo dimensions');
       const scale = Math.min(160 / image.width, 110 / image.height);
-      // Only the display dimensions change; the original image bytes are embedded unchanged.
+      // Both corners stay within the same final output row. Excel can move/resize
+      // images with filtered cells; source indexes from before filtering are never used.
+      const photoColumn = 17 + index;
+      const photoRow = row.number - 1;
+      const anchor = (x: number, y: number) => ({
+        nativeCol: photoColumn, nativeRow: photoRow,
+        nativeColOff: Math.round(x * 9525), nativeRowOff: Math.round(y * 9525),
+      } as ExcelJS.Anchor);
       sheet.addImage(image.id, {
-        tl: { col: 17 + index + 0.05, row: row.number - 1 + 0.05 },
-        ext: { width: image.width * scale, height: image.height * scale },
-        editAs: 'oneCell',
+        tl: anchor(5, 5), br: anchor(5 + image.width * scale, 5 + image.height * scale), editAs: 'twoCell',
       });
     }
   }
@@ -135,8 +141,8 @@ async function loadOriginalPhoto(key: string): Promise<ExportPhoto> {
   return { base64, extension, width: image.naturalWidth, height: image.naturalHeight };
 }
 
-export async function downloadInspectionResults(hallId: HallId, mode: 'all' | 'differences'): Promise<void> {
-  const response = await fetch(`/api/inventory/inspection/export?hallId=${hallId}&mode=${mode}`);
+export async function downloadInspectionResults(hallId: HallId, mode: 'all' | 'differences', scope: ExportScope = 'history'): Promise<void> {
+  const response = await fetch(`/api/inventory/inspection/export?hallId=${hallId}&mode=${mode}&scope=${scope}`);
   const result = await response.json();
   if (!response.ok || !result.success) throw new Error(result.error || '导出失败');
   const workbook = await buildInspectionWorkbook(result.rows, loadOriginalPhoto);
@@ -147,7 +153,7 @@ export async function downloadInspectionResults(hallId: HallId, mode: 'all' | 'd
   }));
   const link = document.createElement('a');
   link.href = url;
-  link.download = `${hallId}-${mode === 'differences' ? '仅差异' : '全部核查结果'}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  link.download = `${hallId}-${mode === 'differences' ? '仅差异' : '全部核查结果'}-${scope === 'latest' ? '当前WMS版本' : '所有已保存版本'}-${new Date().toISOString().slice(0, 10)}.xlsx`;
   document.body.appendChild(link);
   link.click();
   link.remove();

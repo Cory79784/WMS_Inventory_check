@@ -42,17 +42,20 @@ describe('Real local D1/R2 inspection API', () => {
     const response = await request('http://localhost/api/inventory/inspection/export?hallId=H1&mode=all');
     expect(response.status).toBe(200);
     const { rows } = await response.json() as any;
-    expect(rows.map((r: any) => r.sku)).toEqual(['N', 'D', '无sku']);
+    expect(rows.filter((r: any) => r.rowType === 'sku').map((r: any) => r.sku)).toEqual(['N', 'D']);
+    expect(rows.filter((r: any) => r.rowType === 'location')).toHaveLength(3);
     expect(rows.every((r: any) => r.importedAt && r.status)).toBe(true);
-    expect(rows[2].isEmptyConfirmed).toBe(1);
+    expect(rows.find((r: any) => r.inspectionId === 'empty').isEmptyConfirmed).toBe(1);
     expect(rows.every((r: any) => r.referenceImportId === 'v1' && r.versionNumber === 1)).toBe(true);
   });
   it('exports anomalies and saved notes in differences mode', async () => {
     const response = await request('http://localhost/api/inventory/inspection/export?hallId=H1&mode=differences');
     const { rows } = await response.json() as any;
-    expect(rows).toHaveLength(3);
-    expect(rows[1]).toMatchObject({ sku: 'D', systemQty: 10, actualQty: 8, differenceQty: -2 });
-    expect(rows[1].photoKeys).toEqual(['original1.jpg', 'original2.png']);
+    expect(rows).toHaveLength(4);
+    const shortage = rows.find((r: any) => r.sku === 'D');
+    expect(shortage).toMatchObject({ sku: 'D', systemQty: 10, actualQty: 8, differenceQty: -2 });
+    expect(shortage.photoKeys).toEqual([]);
+    expect(rows.find((r: any) => r.inspectionId === 'diff' && r.rowType === 'location').photoKeys).toEqual(['original1.jpg', 'original2.png']);
   });
   it('writes unchanged original bytes through raw streaming and legacy multipart uploads', async () => {
     const original = Uint8Array.from([137,80,78,71,13,10,26,10,255,0,1,2,3]);
@@ -88,18 +91,18 @@ describe('Real local D1/R2 inspection API', () => {
     expect((await db.prepare('SELECT completed_at FROM location_inspections WHERE inspection_id = ?')
       .bind(saved.inspectionId).first())?.completed_at).toBeNull();
     const exported = await (await request('http://localhost/api/inventory/inspection/export?hallId=H1&mode=all')).json() as any;
-    expect(exported.rows).toHaveLength(3);
+    expect(exported.rows).toHaveLength(5);
   });
   it('returns saved photo keys in the existing frontend shape after reloading', async () => {
     const response = await request('http://localhost/api/inventory/inspection/save', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ hallId: 'H1', locationCode: '109-033-1', status: 'VERIFIED',
-        isEmptyConfirmed: true, skus: [], photos: [{ photoId: 'reload-photo', objectKey: 'original.png' }] }),
+        isEmptyConfirmed: true, skus: [], photos: [{ photoId: 'reload-photo', objectKey: 'original.png', lineId: null }] }),
     });
     expect(response.status).toBe(200);
     const reloaded = await (await request('http://localhost/api/inventory/location?hallId=H1&locationCode=109-033-1')).json() as any;
     expect(reloaded.data.importedAt).toBeTruthy();
-    expect(reloaded.data.inspection.photos).toEqual([{ photoId: 'reload-photo', objectKey: 'original.png' }]);
+    expect(reloaded.data.inspection.photos).toEqual([{ photoId: 'reload-photo', objectKey: 'original.png', lineId: null }]);
     expect(reloaded.data.navigation.prevLocationCode).toBe('109-032-1');
     expect(reloaded.data.navigation.nextLocationCode).toBe('109-034-1');
   });
@@ -156,8 +159,9 @@ describe('Real local D1/R2 inspection API', () => {
     for (const mode of ['all', 'differences']) {
       const exported = await (await request(`http://localhost/api/inventory/inspection/export?hallId=H1&mode=${mode}`)).json() as any;
       const rows = exported.rows.filter((r: any) => r.inspectionId === 'identifiers');
-      expect(rows.map((r: any) => [r.sku,r.barcode])).toEqual([['ONLY-SKU',''],['','123456'],['无sku','']]);
-      expect(rows.every((r: any) => r.photoKeys[0] === 'original.png')).toBe(true);
+      expect(rows.filter((r: any) => r.rowType === 'sku').map((r: any) => [r.sku,r.barcode])).toEqual([['ONLY-SKU',''],['','123456'],['无sku','']]);
+      expect(rows.filter((r: any) => r.rowType === 'sku').every((r: any) => r.photoKeys.length === 0)).toBe(true);
+      expect(rows.find((r: any) => r.rowType === 'location').photoKeys).toEqual(['original.png']);
     }
   });
 
@@ -188,9 +192,11 @@ describe('Real local D1/R2 inspection API', () => {
     for (const mode of ['all', 'differences']) {
       const result = await (await request(`http://localhost/api/inventory/inspection/export?hallId=H1&mode=${mode}`)).json() as any;
       const rows = result.rows.filter((row: any) => row.inspectionId === saved.inspectionId);
-      expect(rows).toHaveLength(2);
-      expect(rows.map((row: any) => row.returnCode).sort()).toEqual(['0001234567', '000SHORT']);
-      expect(rows.every((row: any) => row.isReturn && row.notes.startsWith('库位备注；') && !row.notes.includes('@wms-return'))).toBe(true);
+      expect(rows).toHaveLength(3);
+      const skuRows = rows.filter((row: any) => row.rowType === 'sku');
+      expect(skuRows.map((row: any) => row.returnCode).sort()).toEqual(['0001234567', '000SHORT']);
+      expect(skuRows.every((row: any) => row.isReturn && !row.notes.includes('库位备注') && !row.notes.includes('@wms-return'))).toBe(true);
+      expect(rows.find((row: any) => row.rowType === 'location').notes).toBe('库位备注');
     }
     await save({ ...payload, skus: payload.skus.map(item => ({ ...item, isReturn: false })) });
     expect((await reload()).skus.every((item: any) => !item.isReturn && item.returnCode === '')).toBe(true);
@@ -288,5 +294,99 @@ describe('P0 evidence filter on real D1', () => {
     expect((await response.json() as any).success).toBe(false);
     expect(await db.prepare("SELECT * FROM location_inspections WHERE location_code='p0-failure'").first()).toBeNull();
     await db.prepare('DROP TRIGGER p0_fail').run();
+  });
+});
+
+describe('Stable line photo associations and precise export', () => {
+  const save = async (body: any) => {
+    const response = await request('http://localhost/api/inventory/inspection/save', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    return response.json() as any;
+  };
+  const exported = async (mode = 'differences', scope = 'history') => (await (await request(
+    `http://localhost/api/inventory/inspection/export?hallId=H1&mode=${mode}&scope=${scope}`)).json() as any).rows;
+  it('keeps equal-SKU book/surplus and two unknown surplus lines separate across reorder, save and reload', async () => {
+    const db = await mf.getD1Database('DB');
+    await db.prepare(`INSERT INTO inventory_stock_rows (id,import_id,hall_id,location_code,sku,system_qty)
+      VALUES ('stable-book','v2','H1','109-080-1','DUP',10)`).run();
+    const skus = [
+      { lineId:'book:DUP',sku:'DUP',systemQty:10,actualQty:10,differenceQty:0,discrepancyType:'NORMAL' },
+      { lineId:'extra:dup',sku:'DUP',systemQty:0,actualQty:2,differenceQty:2,discrepancyType:'SURPLUS' },
+      { lineId:'extra:unknown-1',sku:'无SKU未知品',systemQty:0,actualQty:1,differenceQty:1,discrepancyType:'NO_SKU_SURPLUS' },
+      { lineId:'extra:unknown-2',sku:'无SKU未知品',systemQty:0,actualQty:3,differenceQty:3,discrepancyType:'NO_SKU_SURPLUS' },
+      { lineId:'short:no-photo',sku:'SHORT',systemQty:5,actualQty:3,differenceQty:-2,discrepancyType:'SHORTAGE' },
+    ];
+    const photos = [
+      { photoId:'stable-p1',objectKey:'dup.jpg',lineId:'extra:dup' },
+      { photoId:'stable-p2',objectKey:'unknown1-a.jpg',lineId:'extra:unknown-1' },
+      { photoId:'stable-p3',objectKey:'unknown1-b.jpg',lineId:'extra:unknown-1' },
+      { photoId:'stable-p4',objectKey:'unknown2.jpg',lineId:'extra:unknown-2' },
+    ];
+    const payload = { hallId:'H1',locationCode:'109-080-1',referenceImportId:'v2',status:'PENDING_REVIEW',skus,photos };
+    const saved = await save(payload);
+    const idsBefore = await db.prepare('SELECT id FROM sku_inspections WHERE inspection_id=? ORDER BY id').bind(saved.inspectionId).all();
+    await save({ ...payload, skus: [...skus].reverse() });
+    expect((await db.prepare('SELECT id FROM sku_inspections WHERE inspection_id=? ORDER BY id').bind(saved.inspectionId).all()).results).toEqual(idsBefore.results);
+    const reload = await (await request('http://localhost/api/inventory/location?hallId=H1&locationCode=109-080-1')).json() as any;
+    expect(reload.data.skus.map((s:any)=>s.lineId).sort()).toEqual(skus.map(s=>s.lineId).sort());
+    expect(reload.data.inspection.photos.map((p:any)=>[p.objectKey,p.lineId]).sort()).toEqual(photos.map(p=>[p.objectKey,p.lineId]).sort());
+    const rows = (await exported()).filter((r:any)=>r.inspectionId===saved.inspectionId);
+    expect(rows).toHaveLength(4);
+    expect(rows.find((r:any)=>r.lineId==='book:DUP')).toBeUndefined();
+    expect(rows.find((r:any)=>r.lineId==='extra:dup').photoKeys).toEqual(['dup.jpg']);
+    expect(rows.find((r:any)=>r.lineId==='extra:unknown-1').photoKeys).toEqual(['unknown1-a.jpg','unknown1-b.jpg']);
+    expect(rows.find((r:any)=>r.lineId==='extra:unknown-2').photoKeys).toEqual(['unknown2.jpg']);
+    expect(rows.find((r:any)=>r.lineId==='short:no-photo').photoKeys).toEqual([]);
+    expect((await exported('all')).filter((r:any)=>r.inspectionId===saved.inspectionId)).toHaveLength(5);
+  });
+  it('retains a targeted photo before the line has an actual count and links it after checking', async () => {
+    const db = await mf.getD1Database('DB');
+    await db.prepare(`INSERT INTO inventory_stock_rows (id,import_id,hall_id,location_code,sku,system_qty)
+      VALUES ('pending-book','v2','H1','109-081-1','PENDING',6)`).run();
+    const photo = { photoId:'pending-p',objectKey:'pending.jpg',lineId:'book:PENDING' };
+    const payload = { hallId:'H1',locationCode:'109-081-1',referenceImportId:'v2',status:'IN_PROGRESS',skus:[],photos:[photo] };
+    const first = await save(payload);
+    const reload = await (await request('http://localhost/api/inventory/location?hallId=H1&locationCode=109-081-1')).json() as any;
+    expect(reload.data.inspection.photos[0].lineId).toBe(reload.data.skus[0].lineId);
+    expect(reload.data.inspection.photos[0].sku).toBe('PENDING');
+    expect((await exported()).some((r:any)=>r.inspectionId===first.inspectionId)).toBe(false);
+    await save({ ...payload,status:'VERIFIED',skus:[{lineId:'book:PENDING',sku:'PENDING',systemQty:6,actualQty:6,differenceQty:0,discrepancyType:'NORMAL'}] });
+    const rows=(await exported()).filter((r:any)=>r.inspectionId===first.inspectionId);
+    expect(rows).toHaveLength(1); expect(rows[0]).toMatchObject({rowType:'sku',lineId:'book:PENDING',photoKeys:['pending.jpg']});
+    await save({ ...payload,status:'VERIFIED',skus:[{lineId:'book:PENDING',sku:'PENDING',systemQty:6,actualQty:6,differenceQty:0,discrepancyType:'NORMAL'}],photos:[] });
+    expect((await exported()).find((r:any)=>r.inspectionId===first.inspectionId).photoKeys).toEqual(['pending.jpg']);
+  });
+  it('never guesses ambiguous legacy SKU photos onto equal-SKU rows', async () => {
+    const skus=[1,2].map(n=>({lineId:`legacy-extra:${n}`,sku:'SAME',systemQty:0,actualQty:n,differenceQty:n,discrepancyType:'SURPLUS'}));
+    const saved=await save({hallId:'H1',locationCode:'109-082-1',status:'PENDING_REVIEW',skus,
+      photos:[{photoId:'legacy-ambiguous',objectKey:'legacy.jpg',sku:'SAME'}]});
+    const rows=(await exported()).filter((r:any)=>r.inspectionId===saved.inspectionId);
+    expect(rows.filter((r:any)=>r.rowType==='sku').every((r:any)=>r.photoKeys.length===0)).toBe(true);
+    expect(rows.find((r:any)=>r.rowType==='location').photoKeys).toEqual(['legacy.jpg']);
+  });
+  it('upgrades exact legacy links without deleting originals or guessing by SKU', async () => {
+    const db=await mf.getD1Database('DB');
+    await db.prepare(`INSERT INTO location_inspections (inspection_id,hall_id,location_code,reference_import_id,status,completed_at)
+      VALUES ('legacy-exact','H1','109-083-1','v2','PENDING_REVIEW','2026-10-15')`).run();
+    await db.prepare(`INSERT INTO sku_inspections (id,inspection_id,sku,system_qty,actual_qty,difference_qty,discrepancy_type)
+      VALUES ('old-line','legacy-exact','OLD',0,2,2,'SURPLUS')`).run();
+    await db.prepare(`INSERT INTO inspection_photos (photo_id,inspection_id,sku_inspection_id,object_key)
+      VALUES ('old-photo','legacy-exact','old-line','old-original.jpg')`).run();
+    const reload=await (await request('http://localhost/api/inventory/location?hallId=H1&locationCode=109-083-1')).json() as any;
+    expect(reload.data.inspection.photos[0].lineId).toBe('old-line');
+    await save({hallId:'H1',locationCode:'109-083-1',status:'PENDING_REVIEW',skus:reload.data.skus,photos:[]});
+    const rows=(await exported()).filter((r:any)=>r.inspectionId==='legacy-exact');
+    expect(rows).toHaveLength(1); expect(rows[0].photoKeys).toEqual(['old-original.jpg']);
+  });
+  it('keeps historical scope explicit and rejects invalid scope or duplicate line IDs', async () => {
+    expect((await exported('all','latest')).every((r:any)=>r.referenceImportId==='v2')).toBe(true);
+    expect((await exported('all')).some((r:any)=>r.referenceImportId==='v1')).toBe(true);
+    expect((await request('http://localhost/api/inventory/inspection/export?hallId=H1&mode=all&scope=invalid')).status).toBe(400);
+    const response=await request('http://localhost/api/inventory/inspection/save', {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({hallId:'H1',locationCode:'duplicate-lines',skus:[{lineId:'same'},{lineId:'same'}]})});
+    expect(response.status).toBe(400);
+    expect(await (await mf.getD1Database('DB')).prepare("SELECT * FROM location_inspections WHERE location_code='duplicate-lines'").first()).toBeNull();
   });
 });

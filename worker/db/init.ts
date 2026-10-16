@@ -185,7 +185,13 @@ export const SCHEMA_STATEMENTS = [
     FOREIGN KEY (inspection_id) REFERENCES location_inspections(inspection_id) ON DELETE CASCADE
   );`,
 
-  `CREATE INDEX IF NOT EXISTS idx_photo_insp ON inspection_photos(inspection_id);`
+  `CREATE INDEX IF NOT EXISTS idx_photo_insp ON inspection_photos(inspection_id);`,
+  // New links also retain the intended line while that SKU is still unchecked.
+  `CREATE TABLE IF NOT EXISTS inspection_photo_lines (
+    photo_id TEXT PRIMARY KEY,
+    line_key TEXT NOT NULL,
+    FOREIGN KEY (photo_id) REFERENCES inspection_photos(photo_id) ON DELETE CASCADE
+  );`
 ];
 
 /**
