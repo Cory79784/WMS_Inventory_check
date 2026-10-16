@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import type { ExportScope, HallId, InspectionExportRow } from '../types';
+import { exportText, exportNote, type ExportLanguage } from './exportLanguage';
 
 interface ExportPhoto {
   base64: string;
@@ -9,30 +10,31 @@ interface ExportPhoto {
 }
 
 export async function buildInspectionWorkbook(
-  rows: InspectionExportRow[], loadPhoto: (key: string) => Promise<ExportPhoto>
+  rows: InspectionExportRow[], loadPhoto: (key: string) => Promise<ExportPhoto>, language: ExportLanguage = 'zh'
 ): Promise<ExcelJS.Workbook> {
+  const text = exportText[language];
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet('库存核查记录');
+  const sheet = workbook.addWorksheet(text.sheet);
   const photoCount = Math.max(0, ...rows.map((row) => row.photoKeys.length));
   sheet.columns = [
-    { header: '库厅', key: 'hallId', width: 8 },
-    { header: '库位', key: 'locationCode', width: 16 },
-    { header: 'SKU', key: 'sku', width: 24 },
-    { header: 'Barcode', key: 'barcode', width: 24 },
-    { header: '商品名称', key: 'nameZh', width: 26 },
-    { header: '账面数量', key: 'systemQty', width: 12 },
-    { header: '实盘数量', key: 'actualQty', width: 12 },
-    { header: '差异', key: 'differenceQty', width: 12 },
-    { header: '差异类型', key: 'discrepancyLabel', width: 16 },
-    { header: '核查状态', key: 'statusLabel', width: 12 },
-    { header: '核查时间', key: 'completedAt', width: 26 },
-    { header: 'WMS 版本', key: 'version', width: 28 },
-    { header: 'WMS 导入时间', key: 'importedAt', width: 26 },
-    { header: '备注', key: 'notes', width: 36 },
-    { header: '照片标记', key: 'photoLabel', width: 20 },
-    { header: '是否退货', key: 'returnLabel', width: 12 },
-    { header: '退货码或跟踪号（如有）', key: 'returnCode', width: 28 },
-    ...Array.from({ length: photoCount }, (_, index) => ({ header: `照片 ${index + 1}`, width: 24 })),
+    { header: text.headers[0], key: 'hallId', width: 8 },
+    { header: text.headers[1], key: 'locationCode', width: 16 },
+    { header: text.headers[2], key: 'sku', width: 24 },
+    { header: text.headers[3], key: 'barcode', width: 24 },
+    { header: text.headers[4], key: 'nameZh', width: 26 },
+    { header: text.headers[5], key: 'systemQty', width: 12 },
+    { header: text.headers[6], key: 'actualQty', width: 12 },
+    { header: text.headers[7], key: 'differenceQty', width: 12 },
+    { header: text.headers[8], key: 'discrepancyLabel', width: 16 },
+    { header: text.headers[9], key: 'statusLabel', width: 12 },
+    { header: text.headers[10], key: 'completedAt', width: 26 },
+    { header: text.headers[11], key: 'version', width: 28 },
+    { header: text.headers[12], key: 'importedAt', width: 26 },
+    { header: text.headers[13], key: 'notes', width: 36 },
+    { header: text.headers[14], key: 'photoLabel', width: 20 },
+    { header: text.headers[15], key: 'returnLabel', width: 12 },
+    { header: text.headers[16], key: 'returnCode', width: 28 },
+    ...Array.from({ length: photoCount }, (_, index) => ({ header: `${text.photo} ${index + 1}`, width: 24 })),
   ];
   sheet.getRow(1).font = { bold: true };
   sheet.views = [{ state: 'frozen', ySplit: 1 }];
@@ -45,20 +47,21 @@ export async function buildInspectionWorkbook(
     cell.border = { bottom: { style: 'medium', color: { argb: 'FF57B9D8' } } };
   });
   const images = new Map<string, Promise<{ id: number; width: number; height: number }>>();
-  const discrepancyLabels: Record<string, string> = {
-    NORMAL: '正常', SHORTAGE: '少货', SURPLUS: '多货', UNEXPECTED_SKU: '账外SKU', NO_SKU_SURPLUS: '无SKU多货',
-  };
+  const discrepancyLabels: Record<string, string> = text.discrepancy;
+  const statusLabels: Record<string, string> = text.status;
   for (const [resultIndex, result] of rows.entries()) {
     const row = sheet.addRow({ ...result,
+      sku: result.sku === '无sku' ? text.noSku : result.sku,
+      notes: exportNote(result.notes, language),
       ...(result.rowType === 'location' ? { systemQty: '', actualQty: '', differenceQty: '' } : {}),
       version: `V${result.versionNumber} (${result.referenceImportId})`,
-      discrepancyLabel: result.rowType === 'location' ? (result.isEmptyConfirmed ? '确认空库位' : '库位存证') : result.isEmptyConfirmed ? '确认空库位'
-        : discrepancyLabels[result.discrepancyType || ''] || (result.differenceQty < 0 ? '少货' : result.differenceQty > 0 ? '多货' : '正常'),
-      statusLabel: result.status === 'PENDING_REVIEW' ? '待复核' : '已核查',
-      photoLabel: result.photoKeys.length ? (result.rowType === 'location' ? '库位存证'
+      discrepancyLabel: result.rowType === 'location' ? (result.isEmptyConfirmed ? text.empty : text.location) : result.isEmptyConfirmed ? text.empty
+        : discrepancyLabels[result.discrepancyType || ''] || (result.differenceQty < 0 ? text.discrepancy.SHORTAGE : result.differenceQty > 0 ? text.discrepancy.SURPLUS : text.discrepancy.NORMAL),
+      statusLabel: statusLabels[result.status || 'VERIFIED'] || result.status,
+      photoLabel: result.photoKeys.length ? (result.rowType === 'location' ? text.location
         : result.differenceQty === 0 && (!result.discrepancyType || result.discrepancyType === 'NORMAL') && !result.isReturn
-          ? '正常·有照片' : '有照片') : '',
-      returnLabel: result.isReturn ? '是' : '',
+          ? text.normalPhoto : text.attached) : '',
+      returnLabel: result.isReturn ? text.yes : '',
       returnCode: result.isReturn ? result.returnCode || '' : '',
     });
     row.font = { name: 'Calibri', size: 11, color: { argb: 'FF173644' } };
@@ -141,19 +144,20 @@ async function loadOriginalPhoto(key: string): Promise<ExportPhoto> {
   return { base64, extension, width: image.naturalWidth, height: image.naturalHeight };
 }
 
-export async function downloadInspectionResults(hallId: HallId, mode: 'all' | 'differences', scope: ExportScope = 'history'): Promise<void> {
+export async function downloadInspectionResults(hallId: HallId, mode: 'all' | 'differences', scope: ExportScope = 'history', language: ExportLanguage = 'zh'): Promise<void> {
   const response = await fetch(`/api/inventory/inspection/export?hallId=${hallId}&mode=${mode}&scope=${scope}`);
   const result = await response.json();
   if (!response.ok || !result.success) throw new Error(result.error || '导出失败');
-  const workbook = await buildInspectionWorkbook(result.rows, loadOriginalPhoto);
+  const workbook = await buildInspectionWorkbook(result.rows, loadOriginalPhoto, language);
   // ZIP compression is lossless: image byte streams and Excel layout remain unchanged.
   const buffer = await workbook.xlsx.writeBuffer({ zip: { compression: 'DEFLATE', compressionOptions: { level: 9 } } });
   const url = URL.createObjectURL(new Blob([new Uint8Array(buffer)], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   }));
+  const text = exportText[language];
   const link = document.createElement('a');
   link.href = url;
-  link.download = `${hallId}-${mode === 'differences' ? '仅差异' : '全部核查结果'}-${scope === 'latest' ? '当前WMS版本' : '所有已保存版本'}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  link.download = `${hallId}-${mode === 'differences' ? text.differences : text.all}-${text.scope[scope]}-${language}-${new Date().toISOString().slice(0, 10)}.xlsx`;
   document.body.appendChild(link);
   link.click();
   link.remove();

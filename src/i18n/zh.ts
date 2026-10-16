@@ -12,6 +12,7 @@ export const zh = {
   originalExport: '核查结果导出', differences: '仅导出差异',
   allExport: '导出全部核查结果', exporting: '导出中…',
   exportDescription: '仅导出已完成核查的记录；可选择当前 WMS 版本或所有已保存版本。同一版本重复保存会更新原结果。库位存证与 SKU 明细分别导出，照片不跨明细复制。',
+  exportLanguageLabel: "导出表格语言",
   exportScopeLabel: '导出版本范围',
   exportScopeHistory: '所有已保存版本（含历史）',
   exportScopeLatest: '仅当前 WMS 版本',

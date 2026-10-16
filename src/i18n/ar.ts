@@ -12,6 +12,7 @@ export const ar: Record<TranslationKey, string> = {
  manualReturn:'إدخال رمز الإرجاع يدويًا',scanReturn:'امسح رمز الإرجاع أو رقم التتبع (إن وجد)',
  originalExport:'تصدير نتائج الفحص',differences:'تصدير الفروقات فقط',allExport:'تصدير جميع نتائج الفحص',
  exporting:'جارٍ التصدير…',exportDescription:'يتم تصدير عمليات الفحص المكتملة فقط، بما فيها إصدارات WMS السابقة المحفوظة. يؤدي الحفظ المتكرر للإصدار نفسه إلى تحديث النتيجة؛ صدّرها أولًا للاحتفاظ بنسخة.',
+  exportLanguageLabel: "لغة ملف Excel",
   exportScopeLabel: "نطاق الإصدارات",
   exportScopeHistory: "جميع الإصدارات المحفوظة",
   exportScopeLatest: "إصدار WMS الحالي فقط",

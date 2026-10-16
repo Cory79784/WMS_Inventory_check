@@ -12,18 +12,19 @@ beforeAll(async()=>{
  createRoot=(await import('react-dom/client')).createRoot;Page=(await import('../src/pages/InspectionExportPage')).InspectionExportPage;
 });
 afterEach(async()=>{await act(async()=>root.unmount());container.remove();vi.clearAllMocks();});
-describe('Explicit export version scope',()=>{
- it('passes the selected scope for both export modes',async()=>{
+describe('Independent export language and version scope',()=>{
+ it('passes language and scope for both export modes while keeping Chinese UI',async()=>{
   container=document.createElement('div');document.body.appendChild(container);root=createRoot(container);
   await act(async()=>root.render(<Page currentHall="H2"/>));
   const selects=container.querySelectorAll('select');
-  expect(selects).toHaveLength(1);expect(selects[0].value).toBe('history');
-  await act(async()=>{selects[0].value='latest';selects[0].dispatchEvent(new window.Event('change',{bubbles:true}));});
+  expect(selects).toHaveLength(2);expect(selects[0].value).toBe('zh');expect(selects[1].value).toBe('history');
+  await act(async()=>{selects[0].value='de';selects[0].dispatchEvent(new window.Event('change',{bubbles:true}));
+   selects[1].value='latest';selects[1].dispatchEvent(new window.Event('change',{bubbles:true}));});
   expect(container.textContent).toContain('核查结果导出');
   for(const [text,mode] of [['仅导出差异','differences'],['导出全部核查结果','all']]){
    const button=Array.from(container.querySelectorAll('button')).find(item=>item.textContent===text)!;
    await act(async()=>button.dispatchEvent(new window.MouseEvent('click',{bubbles:true})));
-   expect(download).toHaveBeenLastCalledWith('H2',mode,'latest');
+   expect(download).toHaveBeenLastCalledWith('H2',mode,'latest','de');
   }
  });
 });

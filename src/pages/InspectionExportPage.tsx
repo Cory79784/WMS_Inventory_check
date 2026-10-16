@@ -1,8 +1,10 @@
 import { t } from '../i18n';
 import React, { useState } from 'react';
 import { HallId, ExportScope } from '../types';
+import type { ExportLanguage } from '../services/exportLanguage';
 
 export const InspectionExportPage: React.FC<{ currentHall: HallId }> = ({ currentHall }) => {
+  const [language, setLanguage] = useState<ExportLanguage>('zh');
   const [scope, setScope] = useState<ExportScope>('history');
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -11,7 +13,7 @@ export const InspectionExportPage: React.FC<{ currentHall: HallId }> = ({ curren
     setError(null);
     try {
       const { downloadInspectionResults } = await import('../services/inspectionExport');
-      await downloadInspectionResults(currentHall, mode, scope);
+      await downloadInspectionResults(currentHall, mode, scope, language);
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -24,6 +26,11 @@ export const InspectionExportPage: React.FC<{ currentHall: HallId }> = ({ curren
         <h2 className="font-bold text-slate-800">{currentHall} {t('originalExport')}</h2>
         <p className="text-xs text-slate-500">{t('exportDescription')}</p>
         <div className="flex flex-wrap gap-3 text-xs">
+          <label>{t('exportLanguageLabel')}
+            <select aria-label={t('exportLanguageLabel')} value={language} disabled={exporting} onChange={event => setLanguage(event.target.value as ExportLanguage)} className="ml-2 border rounded p-2">
+              <option value="zh">中文</option><option value="en">English</option><option value="de">Deutsch</option>
+            </select>
+          </label>
           <label>{t('exportScopeLabel')}
             <select aria-label={t('exportScopeLabel')} value={scope} disabled={exporting} onChange={event => setScope(event.target.value as ExportScope)} className="ml-2 border rounded p-2">
               <option value="history">{t('exportScopeHistory')}</option><option value="latest">{t('exportScopeLatest')}</option>
