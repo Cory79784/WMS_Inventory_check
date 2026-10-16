@@ -55,10 +55,12 @@ export const App: React.FC = () => {
   }, []);
 
   const [currentHall, setCurrentHall] = useState<HallId>(readSessionHall);
+  const [inspectionTarget, setInspectionTarget] = useState<string | undefined>();
   const allowFileTransfer = !isHandheldDevice();
   const selectHall = (hall: HallId) => {
     rememberSessionHall(hall);
     setCurrentHall(hall);
+    setInspectionTarget(undefined);
   };
   const [activeView, setActiveView] = useState<'inspect' | 'test' | 'import' | 'export' | 'arch'>('inspect');
 
@@ -78,13 +80,14 @@ export const App: React.FC = () => {
         {activeView === 'inspect' && (
           <LocationInspectionPage
             currentHall={currentHall}
+            initialLocation={inspectionTarget}
             allowFileTransfer={allowFileTransfer}
             onOpenImport={() => { if (allowFileTransfer) setActiveView('import'); }}
             onOpenTest={() => setActiveView('test')}
           />
         )}
         {allowFileTransfer && activeView === 'import' && <WMSImportPage currentHall={currentHall} />}
-        {allowFileTransfer && activeView === 'export' && <InspectionExportPage currentHall={currentHall} />}
+        {allowFileTransfer && activeView === 'export' && <InspectionExportPage currentHall={currentHall} onInspectLocation={location => { setInspectionTarget(location); setActiveView('inspect'); }} />}
         {activeView === 'test' && <DeviceTestPage />}
         {activeView === 'arch' && <ArchitecturePage />}
       </main>

@@ -59,6 +59,7 @@ const hasDraftChanges = (draft: LocationDraft) =>
   draft.uploads.some((upload) => upload.status !== 'saved');
 
 interface LocationInspectionPageProps {
+  initialLocation?: string;
   currentHall: HallId;
   allowFileTransfer?: boolean;
   onOpenImport: () => void;
@@ -67,6 +68,7 @@ interface LocationInspectionPageProps {
 
 export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   currentHall,
+  initialLocation,
   onOpenImport,
   onOpenTest,
   allowFileTransfer = !isHandheldDevice(),
@@ -281,6 +283,10 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       }, 0);
     }
   };
+
+  useEffect(() => {
+    if (initialLocation) void handleQueryLocation(initialLocation);
+  }, [initialLocation, currentHall]);
 
   // Handle Scanner Enter Key
   const handleScanKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
