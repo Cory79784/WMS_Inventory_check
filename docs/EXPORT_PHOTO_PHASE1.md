@@ -3,7 +3,7 @@
 ## 范围
 
 - 保留四、五、六的差异筛选、照片关联和 Excel 布局修复。
-- 按后续要求补充中文/英语/德语 Excel 固定文字导出；不翻译商品名称，不调用翻译 API。核查时间仅将 12px 常规文字调整为 14px 中等字重，不改时间逻辑。不增加库存版本对比。
+- 按后续要求补充中文/英语/德语 Excel 固定文字导出；不翻译商品名称，不调用翻译 API。核查时间仅将 12px 常规文字调整为 14px 中等字重，不改时间逻辑。库存版本对比现按后续需求补充，说明见 `SNAPSHOT_COMPARISON.md`。
 - main 代码备份分支：`backup/main-before-export-photo-fix-20261016`。
 - 开发分支：`fix/export-photo-associations-phase1`。未合并、不部署。
 

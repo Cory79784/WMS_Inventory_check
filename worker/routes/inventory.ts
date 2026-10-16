@@ -1,3 +1,4 @@
+import { handleSnapshotComparison } from './snapshot-compare';
 import { Env, AuthUser } from '../types';
 import { authenticateRequest } from '../auth/access';
 import { inspectionLineId, skuInspectionId } from '../inspectionLineIds';
@@ -33,6 +34,10 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
   // Public attribution; no login or session is required.
   const auth = await authenticateRequest(request, env);
   const user = auth.user;
+
+  if (path === '/api/inventory/snapshot-versions' || path === '/api/inventory/snapshot-compare') {
+    return handleSnapshotComparison(request, env);
+  }
 
   if (path === '/api/inventory/inspection/export' && request.method === 'GET') {
     return exportInspectionResults(request, env);

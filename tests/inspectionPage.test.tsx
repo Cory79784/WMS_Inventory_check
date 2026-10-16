@@ -55,6 +55,13 @@ async function query(code: string) {
   await act(async () => scanInput().dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
 }
 describe('PDA inspection UI interactions', () => {
+  it('opens a changed location from snapshot comparison without saving or enabling manual keyboard', async () => {
+    await act(async () => root.render(<Page currentHall="H1" initialLocation="109-081-1" onOpenImport={() => {}} onOpenTest={() => {}} />));
+    expect(api.fetchLocationAudit).toHaveBeenLastCalledWith('H1', '109-081-1');
+    expect(scanInput().value).toBe('109-081-1');
+    expect(scanInput().inputMode).toBe('none');
+    expect(api.saveLocationInspection).not.toHaveBeenCalled();
+  });
   it('retains unsaved SKU results when switching and stays put after saving', async () => {
     await query('109-028-1'); await click(button('正常'));
     await click(container.querySelector('[aria-label="下一库位"]')!);

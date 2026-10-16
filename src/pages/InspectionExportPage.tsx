@@ -1,9 +1,10 @@
+import { SnapshotComparisonPanel } from '../components/SnapshotComparisonPanel';
 import { t } from '../i18n';
 import React, { useState } from 'react';
 import { HallId, ExportScope } from '../types';
 import type { ExportLanguage } from '../services/exportLanguage';
 
-export const InspectionExportPage: React.FC<{ currentHall: HallId }> = ({ currentHall }) => {
+export const InspectionExportPage: React.FC<{ currentHall: HallId; onInspectLocation?: (location: string) => void }> = ({ currentHall, onInspectLocation }) => {
   const [language, setLanguage] = useState<ExportLanguage>('zh');
   const [scope, setScope] = useState<ExportScope>('history');
   const [exporting, setExporting] = useState(false);
@@ -21,7 +22,7 @@ export const InspectionExportPage: React.FC<{ currentHall: HallId }> = ({ curren
     }
   };
   return (
-    <div className="max-w-2xl mx-auto px-2 sm:px-4 py-3">
+    <div className="max-w-4xl mx-auto px-2 sm:px-4 py-3 space-y-4">
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 space-y-3">
         <h2 className="font-bold text-slate-800">{currentHall} {t('originalExport')}</h2>
         <p className="text-xs text-slate-500">{t('exportDescription')}</p>
@@ -45,6 +46,7 @@ export const InspectionExportPage: React.FC<{ currentHall: HallId }> = ({ curren
         {exporting && <p role="status" className="text-xs text-slate-500">{t('exporting')}</p>}
         {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
       </div>
+      <SnapshotComparisonPanel key={currentHall} hallId={currentHall} language={language} onInspectLocation={onInspectLocation} />
     </div>
   );
 };

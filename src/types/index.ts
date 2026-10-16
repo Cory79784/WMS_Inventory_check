@@ -133,3 +133,20 @@ export interface LocationAuditData {
     nextLocationCode: string | null;
   };
 }
+
+export interface SnapshotVersion {
+  importId: string; hallId: string; versionNumber: number; importedAt: string;
+  sourceExportedAt: string | null; originalFilename: string;
+}
+export interface SnapshotChange {
+  locationCode: string; sku: string; barcode: string; nameZh: string;
+  oldQty: number; newQty: number; differenceQty: number;
+  changeType: 'ADDED' | 'REMOVED' | 'QUANTITY_CHANGED';
+}
+export interface SnapshotComparison {
+  hallId: string; oldVersion: SnapshotVersion; newVersion: SnapshotVersion;
+  summary: { changedLocations: number; changedSkuRows: number; addedSkuRows: number;
+    removedSkuRows: number; quantityChangedRows: number; newStockedLocations: number; emptiedLocations: number; };
+  locations: Array<{locationCode:string;changeType:'NEW_LOCATION'|'EMPTIED_LOCATION'|'CHANGED';
+    oldTotalQty:number;newTotalQty:number;changes:SnapshotChange[]}>;
+}
