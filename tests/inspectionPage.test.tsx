@@ -257,6 +257,17 @@ describe('PDA inspection UI interactions', () => {
       Object.defineProperty(navigator, 'userAgent', { configurable: true, value: originalAgent });
     }
   });
+  it('slightly emphasizes the existing last-inspection time without changing its content', async () => {
+    const base=await api.fetchLocationAudit('H1','115-019-1');
+    const completedAt='2026-10-15T09:30:00Z';
+    api.fetchLocationAudit.mockResolvedValueOnce({...base,lastInspection:{completedAt,versionNumber:1}});
+    await query('115-019-1');
+    const time=container.querySelector('[data-testid="last-inspection-time"]')!;
+    expect(time.textContent).toContain(new Date(completedAt).toLocaleString('zh-CN',{hour12:false}));
+    expect(time.classList.contains('text-sm')).toBe(true);
+    expect(time.classList.contains('font-medium')).toBe(true);
+    expect(time.className).not.toMatch(/bg-|text-lg|text-xl/);
+  });
   it('confirms sparse empty locations and saves immediately with zero SKU rows', async () => {
     const base = await api.fetchLocationAudit('H1', '115-005-1');
     api.fetchLocationAudit.mockResolvedValueOnce({ ...base, hasBookStock: false, skus: [] });

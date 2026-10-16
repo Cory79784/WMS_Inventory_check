@@ -134,3 +134,31 @@ describe('Filtered Excel image placement', () => {
     for(const col of ['F','G','H']) expect(workbook.worksheets[0].getCell(`${col}2`).value).toBe('');
   });
 });
+
+describe('Static spreadsheet translations without changing source data', () => {
+  it.each([
+    ['zh','库存核查记录','库厅','少货','是','待复核'],
+    ['en','Inventory Audit','Hall','Shortage','Yes','Pending review'],
+    ['de','Bestandsprüfung','Halle','Fehlbestand','Ja','Nachprüfung ausstehend'],
+  ] as const)('uses %s labels while preserving raw names, manual notes, codes and photo bytes', async(language,sheetName,header,discrepancy,yes,status)=>{
+    const book=await buildInspectionWorkbook([{...row,sku:'000SKU',barcode:'0000123',nameZh:'原始中文商品名称',
+      notes:'人工备注：包装破损',discrepancyType:'SHORTAGE',status:'PENDING_REVIEW',isReturn:true,returnCode:'000RET',photoKeys:['a']}],
+      async()=>({base64:originalPng,extension:'png',width:1,height:1}),language);
+    const data=await book.xlsx.writeBuffer(); const restored=new ExcelJS.Workbook();await restored.xlsx.load(data);
+    const sheet=restored.getWorksheet(sheetName)!;
+    expect(sheet.getCell('A1').value).toBe(header);expect(sheet.getCell('I2').value).toBe(discrepancy);
+    expect(sheet.getCell('P2').value).toBe(yes);expect(sheet.getCell('J2').value).toBe(status);
+    expect(sheet.getCell('C2').value).toBe('000SKU');expect(sheet.getCell('D2').value).toBe('0000123');expect(sheet.getCell('Q2').value).toBe('000RET');
+    expect(sheet.getCell('E2').value).toBe('原始中文商品名称');expect(sheet.getCell('N2').value).toBe('人工备注：包装破损');
+    expect(sheet.getCell('F2').value).toBe(10);expect(sheet.getCell('G2').value).toBe(8);expect(sheet.getCell('H2').value).toBe(-2);
+    expect(sheet.getImages()[0].range.tl.nativeRow).toBe(1);
+    const zip=await JSZip.loadAsync(data);expect(await zip.file('xl/media/image1.png')!.async('base64')).toBe(originalPng);
+  });
+  it('translates only exact generated note templates and leaves product names and arbitrary notes intact', async()=>{
+    const {exportNote}=await import('../src/services/exportLanguage');
+    expect(exportNote('现场少货 2 件','en')).toBe('On-site shortage 2 units');
+    expect(exportNote('现场多货 3 件 (NO_SKU)','de')).toBe('Mehrbestand vor Ort 3 Stück (NO_SKU)');
+    expect(exportNote('现场少货 2 件；请复核包装','de')).toBe('现场少货 2 件；请复核包装');
+    expect(exportNote('商品有损坏','en')).toBe('商品有损坏');
+  });
+});

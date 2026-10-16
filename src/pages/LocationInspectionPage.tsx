@@ -909,7 +909,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
             </div>
 
             {locData.lastInspection && (
-              <p className="mt-2 text-xs text-slate-500">
+              <p data-testid="last-inspection-time" className="mt-2 text-sm font-medium text-slate-600">
                 {locData.lastInspection.versionNumber === locData.versionNumber ? t('inspected') : t('previouslyInspected')}：
                 {new Date(locData.lastInspection.completedAt).toLocaleString('zh-CN', { hour12: false })}
                 {locData.lastInspection.versionNumber !== locData.versionNumber && `(V${locData.lastInspection.versionNumber}, V${locData.versionNumber} ${t('stillInspect')})`}

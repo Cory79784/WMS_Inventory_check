@@ -12,6 +12,7 @@ export const de: Record<TranslationKey, string> = {
  manualReturn:'Retourencode manuell eingeben',scanReturn:'Retourencode oder Sendungsnummer scannen (falls vorhanden)',
  originalExport:'Prüfergebnisse exportieren',differences:'Nur Abweichungen exportieren',allExport:'Alle Prüfergebnisse exportieren',
  exporting:'Export läuft…',exportDescription:'Nur abgeschlossene Prüfungen werden exportiert, einschließlich gespeicherter früherer WMS-Versionen. Erneutes Speichern derselben Version aktualisiert das Ergebnis; bei Archivierungsbedarf vorher exportieren.',
+  exportLanguageLabel: "Sprache der Excel-Datei",
   exportScopeLabel: "Versionsumfang",
   exportScopeHistory: "Alle gespeicherten Versionen",
   exportScopeLatest: "Nur aktuelle WMS-Version",

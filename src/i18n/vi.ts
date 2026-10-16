@@ -12,6 +12,7 @@ export const vi: Record<TranslationKey, string> = {
  manualReturn:'Nhập mã trả hàng thủ công',scanReturn:'Quét mã trả hàng hoặc mã theo dõi (nếu có)',
  originalExport:'Xuất kết quả kiểm kê',differences:'Chỉ xuất chênh lệch',allExport:'Xuất tất cả kết quả kiểm kê',
  exporting:'Đang xuất…',exportDescription:'Chỉ xuất các lượt kiểm kê đã hoàn tất, bao gồm các phiên bản WMS cũ được lưu. Lưu lại cùng phiên bản sẽ cập nhật kết quả; hãy xuất trước nếu cần lưu hồ sơ.',
+  exportLanguageLabel: "Ngôn ngữ Excel",
   exportScopeLabel: "Phạm vi phiên bản",
   exportScopeHistory: "Tất cả phiên bản đã lưu",
   exportScopeLatest: "Chỉ phiên bản WMS hiện tại",
