@@ -126,7 +126,7 @@ export function SnapshotComparisonPanel({ hallId, language, onInspectLocation, o
       {error && <p role="alert" className="text-sm text-red-600">{error}{versions === null && !loading && <button type="button" className="ml-2 underline" onClick={() => { setRetry(value => value + 1); }}>{t('retry')}</button>}</p>}
       {result && <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2"><span className="font-mono text-sm text-slate-600">{hallId} · V{result.oldVersion.versionNumber} → V{result.newVersion.versionNumber}</span>
-          <button type="button" disabled={!result.locations.length || exporting} onClick={download} className="flex items-center gap-1.5 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-700 disabled:opacity-50"><Download className="w-4 h-4"/>{t('compareDifferenceExport')}</button></div>
+          <button type="button" disabled={!result.locations.length || exporting} onClick={download} className="flex items-center gap-1.5 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-700 disabled:opacity-50"><Download className="w-4 h-4"/>{t('auditSnapshotExport')}</button></div>
         {exporting && <p role="status" className="text-xs text-slate-500">{t('compareExporting')}</p>}
         {onStart && <button type="button" disabled={creating || result.newVersion.importId !== activeId || !result.locations.length} onClick={() => onStart(result)} className="bg-blue-600 text-white px-4 py-2 rounded-lg disabled:opacity-40">{creating ? t('auditSaving') : t('auditCreate')}</button>}
         {!onStart && <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

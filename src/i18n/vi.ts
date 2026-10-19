@@ -1,5 +1,19 @@
 import type { TranslationKey } from './zh';
 export const vi: Record<TranslationKey, string> = {
+  auditExportSavedOnly: "Phiên bản đã cũ: chỉ xuất kết quả lưu trên máy chủ, không gồm bản nháp.",
+
+  auditQtyMinus: "Giảm một",
+  auditQtyPlus: "Tăng một",
+  auditCurrentBook: "Số lượng hệ thống",
+  auditReferenceBook: "Số lượng tham chiếu nhiệm vụ",
+  auditResidual: "Hàng bản cũ / kiểm tra còn sót (sổ mới 0)",
+  auditTaskExport: "Xuất kết quả kiểm đếm nhiệm vụ này",
+  auditExportPending: "Chỉ xuất kết quả hoàn tất trên máy chủ; {count} vị trí chưa xong.",
+  auditExportDirty: "Có thay đổi/ảnh chưa lưu. Lưu xong mới xuất.",
+  auditAllNormalKeepEvidence: "Xác nhận mọi số lượng khớp và xóa hàng thêm, ghi chú, liên kết ảnh?",
+  auditCreated: "Tạo",
+  auditSnapshotExport: "Bảng biến động ảnh chụp WMS",
+
   auditMenu: "Kiểm tra biến động tồn kho",
   auditIntro: "Kiểm tra vị trí thay đổi theo đường zíc zắc. Gợi ý không đổi tuyến. Quan sát không tính là kiểm đếm.",
   auditCreate: "Tạo nhiệm vụ độc lập",

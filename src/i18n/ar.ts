@@ -1,5 +1,19 @@
 import type { TranslationKey } from './zh';
 export const ar: Record<TranslationKey, string> = {
+  auditExportSavedOnly: "الإصدار قديم: التصدير يشمل نتائج الخادم المحفوظة فقط دون المسودات المحلية.",
+
+  auditQtyMinus: "إنقاص واحد",
+  auditQtyPlus: "زيادة واحد",
+  auditCurrentBook: "كمية النظام",
+  auditReferenceBook: "الكمية المرجعية للمهمة",
+  auditResidual: "بضائع الإصدار القديم / فحص المتبقي (الدفتر الجديد صفر)",
+  auditTaskExport: "تصدير نتائج جرد هذه المهمة",
+  auditExportPending: "تُصدر النتائج المكتملة بالخادم فقط؛ {count} موقع غير مكتمل.",
+  auditExportDirty: "توجد تغييرات أو صور غير محفوظة. أكمل الحفظ قبل التصدير.",
+  auditAllNormalKeepEvidence: "تأكيد تطابق الكميات وإزالة البضائع الإضافية والملاحظات وروابط الصور؟",
+  auditCreated: "أُنشئ",
+  auditSnapshotExport: "جدول تغير لقطات WMS الدفترية",
+
   auditMenu: "فحص تغير المخزون",
   auditIntro: "فحص المواقع المتغيرة بمسار متعرج. التنبيهات لا تغير المسار، والنظر وحده ليس جرداً.",
   auditCreate: "إنشاء مهمة مستقلة",

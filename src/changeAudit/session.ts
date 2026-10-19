@@ -38,7 +38,7 @@ export class AuditSession {
                 if (!task.plan.targets.some(t => t.location === location) || !value || !Array.isArray(value.lines))
                     continue;
                 const server = task.results[location];
-                const same = server && JSON.stringify([server.lines, server.notes, server.completed, server.emptyConfirmed]) === JSON.stringify([value.lines, value.notes, value.completed, value.emptyConfirmed]);
+                const same = server && JSON.stringify([server.lines, server.notes, server.completed, server.emptyConfirmed, server.ignoredPhotoIds, server.photoLines]) === JSON.stringify([value.lines, value.notes, value.completed, value.emptyConfirmed, value.ignoredPhotoIds, value.photoLines]);
                 if (same)
                     continue;
                 const conflict = (server?.revision || 0) !== value.revision;
@@ -104,7 +104,7 @@ export class AuditSession {
         this.emit();
         try {
             const saved = await saveResult(this.task.hall, this.task.id, location, value);
-            if (!saved.savedAt || saved.revision !== value.revision + 1 || JSON.stringify([saved.lines, saved.notes, saved.completed, saved.emptyConfirmed]) !== JSON.stringify([value.lines, value.notes, value.completed, value.emptyConfirmed]))
+            if (!saved.savedAt || saved.revision !== value.revision + 1 || JSON.stringify([saved.lines, saved.notes, saved.completed, saved.emptyConfirmed, saved.ignoredPhotoIds, saved.photoLines]) !== JSON.stringify([value.lines, value.notes, value.completed, value.emptyConfirmed, value.ignoredPhotoIds, value.photoLines]))
                 throw new Error('SAVE_NOT_CONFIRMED');
             this.task.results[location] = saved;
             const latest = this.drafts.get(location)!;

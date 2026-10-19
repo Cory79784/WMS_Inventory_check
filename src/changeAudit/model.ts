@@ -11,6 +11,10 @@ export interface BookSku {
     customer: string;
     name: string;
     qty: number;
+    availableQty?: number;
+    allocatedQty?: number;
+    frozenQty?: number;
+    eBarcode?: string;
 }
 export interface Risk {
     kind: 'multi' | 'similarCustomer' | 'variant' | 'nearby' | 'move';
@@ -36,12 +40,16 @@ export interface AuditLine {
     barcode: string;
     actual: number | null;
     notes: string;
+    isReturn?: boolean;
+    returnCode?: string;
 }
 export interface AuditResult {
     lines: AuditLine[];
     notes: string;
     emptyConfirmed: boolean;
     completed: boolean;
+    ignoredPhotoIds?: string[];
+    photoLines?: Record<string,string>;
     revision: number;
     savedAt?: string;
     anomaly?: boolean;

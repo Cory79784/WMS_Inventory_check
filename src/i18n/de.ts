@@ -1,5 +1,19 @@
 import type { TranslationKey } from './zh';
 export const de: Record<TranslationKey, string> = {
+  auditExportSavedOnly: "Referenz veraltet: Export enthält nur gespeicherte Serverergebnisse, keine lokalen Entwürfe.",
+
+  auditQtyMinus: "Um eins verringern",
+  auditQtyPlus: "Um eins erhöhen",
+  auditCurrentBook: "Systembestand",
+  auditReferenceBook: "Referenzbestand der Prüfung",
+  auditResidual: "Alter Bestand / Restwaren prüfen (neuer Sollbestand 0)",
+  auditTaskExport: "Prüfergebnisse dieser Aufgabe exportieren",
+  auditExportPending: "Nur abgeschlossene Serverergebnisse; {count} Plätze offen.",
+  auditExportDirty: "Ungespeicherte Änderungen/Fotos. Erst nach dem Speichern exportieren.",
+  auditAllNormalKeepEvidence: "Alle Mengen als passend bestätigen und Zusatzware, Notizen und Fotozuordnungen entfernen?",
+  auditCreated: "Erstellt",
+  auditSnapshotExport: "WMS-Snapshotänderungen",
+
   auditMenu: "Bestandsänderungen prüfen",
   auditIntro: "Geänderte Plätze auf Schlangenroute prüfen. Hinweise ändern die Route nicht. Sichtkontrolle zählt nicht als Mengenkontrolle.",
   auditCreate: "Unabhängige Prüfung anlegen",

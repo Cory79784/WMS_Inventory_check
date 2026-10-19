@@ -1,3 +1,4 @@
+import { exportChangeAudit } from './change-audit-export';
 import type { Env } from '../types';
 import { handleSnapshotComparison } from './snapshot-compare';
 import { buildPlan, validateConfig, isAnomaly } from '../../src/changeAudit/model';
@@ -15,8 +16,10 @@ class ApiError extends Error {
     constructor(public status: number, message: string) { super(message); }
 }
 const reply = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
-function need(valid: unknown, code = 'INVALID_INPUT'): asserts valid { if (!valid)
-    throw new ApiError(400, code); }
+function need(valid: unknown, code = 'INVALID_INPUT'): asserts valid {
+    if (!valid)
+        throw new ApiError(400, code);
+}
 const text = (value: unknown, max = 2000): value is string => typeof value === 'string' && value.length <= max;
 async function body(request: Request): Promise<any> {
     const raw = await request.text();
@@ -79,7 +82,7 @@ export async function handleChangeAudit(request: Request, env: Env): Promise<Res
             };
             const rows = await env.DB.prepare(`SELECT UPPER(TRIM(location_code)) AS location,TRIM(sku) AS sku,
     MAX(COALESCE(NULLIF(barcode,''),e_barcode,'')) AS barcode,CASE WHEN COUNT(DISTINCT NULLIF(customer_code,''))=1 THEN MAX(COALESCE(customer_code,'')) ELSE '' END AS customer,
-    MAX(COALESCE(NULLIF(name_zh,''),name_en,'')) AS name,SUM(system_qty) AS qty
+    MAX(COALESCE(NULLIF(name_zh,''),name_en,'')) AS name,SUM(system_qty) AS qty,SUM(available_qty) AS availableQty,SUM(allocated_qty) AS allocatedQty,SUM(frozen_qty) AS frozenQty,MAX(COALESCE(e_barcode,'')) AS eBarcode
     FROM inventory_stock_rows WHERE hall_id=? AND import_id=? GROUP BY UPPER(TRIM(location_code)),TRIM(sku) HAVING SUM(system_qty)<>0`).bind(hall, input.newId).all<BookSku & {
                 location: string;
             }>();
@@ -111,6 +114,8 @@ export async function handleChangeAudit(request: Request, env: Env): Promise<Res
         if (action === 'status' && request.method === 'GET')
             return reply({ stale: (await active(env, hall)) !== row.new_import_id });
         const plan = JSON.parse(row.plan_json) as AuditPlan;
+        if (action === 'export' && request.method === 'GET')
+            return exportChangeAudit(request, env, row, plan);
         if (action === 'task' && request.method === 'GET') {
             const results = await env.DB.prepare('SELECT location_code,result_json,revision,saved_at FROM change_audit_results WHERE task_id=?').bind(id).all<{
                 location_code: string;
@@ -147,6 +152,8 @@ export async function handleChangeAudit(request: Request, env: Env): Promise<Res
             for (const line of input.lines) {
                 need(line && typeof line === 'object');
                 need(text(line.id, 200) && !ids.has(line.id) && text(line.sku, 150) && text(line.barcode, 300) && text(line.notes, 1000));
+                need(line.isReturn === undefined || typeof line.isReturn === 'boolean');
+                need(line.returnCode === undefined || text(line.returnCode, 300));
                 ids.add(line.id);
                 need(line.actual === null || (Number.isSafeInteger(line.actual) && line.actual >= 0 && line.actual <= 1000000000));
                 if (line.id.startsWith('book:')) {
@@ -157,11 +164,37 @@ export async function handleChangeAudit(request: Request, env: Env): Promise<Res
                     need(/^extra:[\w-]{8,80}$/.test(line.id), 'INVALID_LINE');
             }
             need(target.skus.every(s => ids.has(`book:${s.sku}`)), 'MISSING_BOOK_LINES');
-            const result: Omit<AuditResult, 'revision'> = { lines: input.lines.map((l: any) => ({ id: l.id, sku: l.sku, barcode: l.barcode, actual: l.actual, notes: l.notes })), notes: input.notes, emptyConfirmed: input.emptyConfirmed, completed: input.completed };
+            const result: Omit<AuditResult, 'revision'> = { lines: input.lines.map((l: any) => ({ id: l.id, sku: l.sku, barcode: l.barcode, actual: l.actual, notes: l.notes, ...(l.isReturn !== undefined ? { isReturn: l.isReturn } : {}), ...(l.returnCode !== undefined ? { returnCode: l.isReturn ? l.returnCode : '' } : {}) })), notes: input.notes, emptyConfirmed: input.emptyConfirmed, completed: input.completed };
+            if (input.ignoredPhotoIds !== undefined) {
+                need(Array.isArray(input.ignoredPhotoIds) && input.ignoredPhotoIds.length <= 1000 && input.ignoredPhotoIds.every((id: unknown) => text(id, 80)));
+                const linked = input.ignoredPhotoIds.length ? await env.DB.prepare('SELECT id FROM change_audit_photos WHERE task_id=? AND location_code=?').bind(id, location).all<{
+                    id: string;
+                }>() : { results: [] };
+                const own = new Set(linked.results.map(p => p.id));
+                need(input.ignoredPhotoIds.every((photoId: string) => own.has(photoId)), 'INVALID_PHOTO');
+                result.ignoredPhotoIds = [...new Set(input.ignoredPhotoIds)] as string[];
+            }
+            if (input.photoLines !== undefined) {
+                need(input.photoLines && typeof input.photoLines === 'object' && !Array.isArray(input.photoLines) && Object.keys(input.photoLines).length <= 1000);
+                const linked = await env.DB.prepare('SELECT id FROM change_audit_photos WHERE task_id=? AND location_code=?').bind(id, location).all<{
+                    id: string;
+                }>();
+                const own = new Set(linked.results.map(p => p.id));
+                need(Object.entries(input.photoLines).every(([photoId, lineId]) => own.has(photoId) && typeof lineId === 'string' && (lineId === '' || ids.has(lineId))), 'INVALID_PHOTO_LINE');
+                result.photoLines = input.photoLines;
+            }
             if (result.completed) {
                 need(result.lines.every(l => l.actual !== null), 'INCOMPLETE_COUNTS');
                 need(target.category !== 'EMPTIED_LOCATION' || result.lines.some(l => (l.actual || 0) > 0) || result.emptyConfirmed, 'CONFIRM_EMPTY');
                 need(result.lines.every(l => l.id.startsWith('book:') || l.sku || l.barcode || l.notes), 'IDENTIFY_EXTRA');
+                const unknown = result.lines.filter(l => l.id.startsWith('extra:') && !l.sku && !l.barcode && (l.actual || 0) > 0);
+                if (unknown.length) {
+                    const evidence = await env.DB.prepare('SELECT id,line_id FROM change_audit_photos WHERE task_id=? AND location_code=?').bind(id, location).all<{
+                        id: string;
+                        line_id: string;
+                    }>();
+                    need(unknown.every(l => evidence.results.some(p => (result.photoLines?.[p.id] ?? p.line_id) === l.id && !result.ignoredPhotoIds?.includes(p.id))), 'PHOTO_REQUIRED');
+                }
             }
             result.anomaly = isAnomaly(target, { ...result, revision: input.revision });
             const json = JSON.stringify(result), savedAt = new Date().toISOString();
