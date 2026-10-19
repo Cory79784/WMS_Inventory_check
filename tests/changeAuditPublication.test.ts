@@ -1,0 +1,70 @@
+import {beforeAll,afterAll,it,expect} from 'vitest';
+import {build} from 'esbuild';import {Miniflare} from 'miniflare';
+import {defaultRoute,blankResult,type AuditTask} from '../src/changeAudit/model';
+let mf:Miniflare,db:Awaited<ReturnType<Miniflare['getD1Database']>>,task:AuditTask;
+const key='test-management-capability-123456789',id='published-task-test';
+const call=(action:string,{manager=false,method='GET',data=undefined as unknown,revision='0',hall='H1',cookie='',extra={} as Record<string,string>}={})=>mf.dispatchFetch(`https://audit.test/api/inventory/change-audit/${action}?${new URLSearchParams({hallId:hall,taskId:id,location:'103-001-1',...extra})}`,{method,headers:{Origin:'https://audit.test','Content-Type':'application/json','X-Audit-Publication-Revision':revision,...(manager?{'X-Audit-Management-Key':key}:{}),...(cookie?{Cookie:cookie}:{})},...(data===undefined?{}:{body:JSON.stringify(data)})});
+const state=(status:string,revision:number)=>call('lifecycle',{manager:true,method:'POST',data:{status,revision}});
+beforeAll(async()=>{
+ const bundle=await build({entryPoints:['worker/index.ts'],bundle:true,write:false,format:'esm',platform:'browser',target:'es2022'});
+ mf=new Miniflare({modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2024-10-11',d1Databases:['DB'],r2Buckets:['PHOTO_BUCKET'],bindings:{ENVIRONMENT:'test',CHANGE_AUDIT_MANAGEMENT_KEY:key}});
+ await mf.dispatchFetch('https://audit.test/api/health');db=await mf.getD1Database('DB');
+ for(const [version,n] of [['old',1],['new',2]]) await db.prepare("INSERT INTO inventory_imports(import_id,hall_id,version_number,original_filename,file_sha256,uploaded_by,status) VALUES(?,'H1',?,'test.xlsx',?,'test','PUBLISHED')").bind(version,n,version).run();
+ await db.prepare("UPDATE active_hall_imports SET active_import_id='new' WHERE hall_id='H1'").run();
+ for(const [v,qty] of [['old',1],['new',2]]) await db.prepare("INSERT INTO inventory_stock_rows(id,import_id,hall_id,location_code,sku,system_qty) VALUES(?,?,'H1','103-001-1','SKU',?)").bind(v,v,qty).run();
+},20000);
+afterAll(async()=>mf?.dispose());
+it('never infers task management rights from a desktop User-Agent; drafts are not public',async()=>{
+ const payload={id,oldId:'old',newId:'new',config:defaultRoute};
+ expect((await call('tasks',{method:'POST',data:payload})).status).toBe(403);
+ expect((await call('tasks',{manager:true,method:'POST',data:payload})).status).toBe(201);
+ expect((await(await call('tasks')).json() as any).tasks).toEqual([]);
+ expect((await call('task')).status).toBe(410);
+ task=await(await call('task',{manager:true})).json() as AuditTask;expect(task.lifecycle).toBe('DRAFT');
+ expect((await call('export')).status).toBe(410);
+});
+it('exchanges a management key for a signed HttpOnly cookie; rejects bad keys, tampering and cross-origin changes',async()=>{
+ expect((await call('manager',{method:'POST',data:{key:'bad'}})).status).toBe(403);
+ const response=await call('manager',{method:'POST',data:{key}}),cookie=response.headers.get('Set-Cookie')!;
+ expect(cookie).toContain('HttpOnly');expect(cookie).toContain('SameSite=Strict');expect(cookie).toContain('Secure');expect(cookie).not.toContain(key);
+ expect((await(await call('manager',{cookie:cookie.split(';')[0]})).json() as any).manager).toBe(true);
+ expect((await(await call('manager',{cookie:cookie.split(';')[0]+'tampered'})).json() as any).manager).toBe(false);
+ expect((await mf.dispatchFetch('https://audit.test/api/inventory/change-audit/manager',{method:'POST',headers:{Origin:'https://evil.test'},body:JSON.stringify({key})})).status).toBe(403);
+});
+it('publishes a frozen plan, permits only published execution with the exact publication revision and isolates halls',async()=>{
+ expect((await call('lifecycle',{method:'POST',data:{status:'PUBLISHED',revision:0}})).status).toBe(403);
+ expect((await state('PUBLISHED',0)).status).toBe(200);
+ expect((await(await call('tasks')).json() as any).tasks).toHaveLength(1);
+ const published=await(await call('task')).json() as AuditTask;expect(published.plan).toEqual(task.plan);expect(published.publicationRevision).toBe(1);
+ const result=blankResult(task.plan.targets[0]);result.notes='PDA draft';
+ expect((await call('save',{method:'POST',data:result})).status).toBe(409);
+ expect((await call('save',{method:'POST',data:result,revision:'1'})).status).toBe(200);
+ expect((await call('task',{hall:'H2'})).status).toBe(404);
+ expect((await call('export')).status).toBe(403);
+ const progress=await(await call('progress')).json() as any;expect(progress.results['103-001-1'].notes).toBe('PDA draft');
+ const status=await(await call('status')).json() as any;expect(status.resultStamp).toBe('1:1:0');
+});
+it('withdraws execution immediately and prevents stale-page writes after republishing',async()=>{
+ const result=(await(await call('task')).json() as AuditTask).results['103-001-1'];
+ expect((await state('WITHDRAWN',1)).status).toBe(200);
+ expect((await call('task')).status).toBe(410);expect((await call('save',{method:'POST',data:result,revision:'1'})).status).toBe(410);
+ expect((await state('PUBLISHED',2)).status).toBe(200);
+ expect((await call('save',{method:'POST',data:{...result,notes:'stale device'},revision:'1'})).status).toBe(409);
+ expect((await call('save',{method:'POST',data:{...result,notes:'new publication'},revision:'3'})).status).toBe(200);
+ expect((await state('DELETED',1)).status).toBe(409);
+});
+it('soft deletion removes the task from PDA, blocks photos and writes, retains isolated manager history/export',async()=>{
+ const before=await db.prepare('SELECT * FROM change_audit_results WHERE task_id=?').bind(id).all();
+ expect((await state('DELETED',3)).status).toBe(200);
+ for(const action of ['task','status','progress','photo','export']) expect((await call(action)).status).toBe(410);
+ expect((await call('save',{method:'POST',data:{},revision:'4'})).status).toBe(410);
+ expect((await call('photo',{method:'POST',data:{},revision:'4'})).status).toBe(410);
+ expect((await(await call('tasks')).json() as any).tasks).toHaveLength(0);
+ expect((await(await call('tasks',{manager:true})).json() as any).tasks).toHaveLength(0);
+ expect((await(await call('tasks',{manager:true,extra:{archived:'1'}})).json() as any).tasks[0].status).toBe('DELETED');
+ expect((await call('export',{manager:true,extra:{mode:'all'}})).status).toBe(200);
+ expect((await call('task',{manager:true})).status).toBe(200);
+ expect((await state('PUBLISHED',4)).status).toBe(410);
+ expect((await db.prepare('SELECT * FROM change_audit_results WHERE task_id=?').bind(id).all()).results).toEqual(before.results);
+ expect((await db.prepare('SELECT COUNT(*) n FROM location_inspections').first())?.n).toBe(0);
+});

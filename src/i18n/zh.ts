@@ -1,4 +1,26 @@
 export const zh = {
+  auditArchiveDraft: "保留旧草稿副本并重新打开有效任务",
+  auditArchive: "包含已删除历史任务（只读导出）",
+  auditManage: "任务管理（PC）",
+  auditManageHint: "请先在 Cloudflare 配置 CHANGE_AUDIT_MANAGEMENT_KEY（至少24位随机字符），再在此授权此电脑；PDA无需填写。",
+  auditManageKey: "管理密钥",
+  auditUnlock: "授权此电脑",
+  auditLock: "取消本机管理授权",
+  auditPublish: "发布给 PDA",
+  auditWithdraw: "撤回发布",
+  auditDelete: "删除任务",
+  auditDeleteConfirm: "删除后 PDA 将无法访问此任务。保留历史结果供 PC 按任务编号导出。确认删除？",
+  auditUnsentChange: "部分内容尚未同步，已保留在本机。更改任务状态后这些草稿将隔离，是否继续？",
+  auditStateDRAFT: "草稿（未发布）",
+  auditStatePUBLISHED: "已发布",
+  auditStateWITHDRAWN: "已撤回（只读）",
+  auditStateDELETED: "已删除",
+  auditUnavailable: "任务已撤回、删除或重新发布，请选择有效任务。本机未同步草稿仍保留，未提交到其他任务。",
+  auditUnavailableDraft: "任务授权已变更，已停止编辑及同步。本机草稿保留，不会提交到其他任务。",
+  auditBackTasks: "返回任务列表",
+  resumeStorageError: "无法可靠保留本机草稿，请保持页面打开并保存成功后再退出。",
+  resumeConflict: "本机有未同步草稿，但服务器记录已变化。已保留草稿并停止自动覆盖，请先核对其他设备的修改。",
+
   auditExportSavedOnly: "参考版本已过期：导出仅含服务器已保存结果，不含本地草稿。",
 
   auditQtyMinus: "减少一件",
@@ -374,7 +396,7 @@ export const zh = {
   photoUploadPendingHint: "照片上传成功，核查记录正在自动保存。",
   photoUnsavedBadge: "照片等待保存",
   exitConfirm: "是否退出库存核查系统？",
-  exitUnsavedConfirm: "有未保存的核查记录。退出后未保存内容将丢失，确定退出？",
+  exitUnsavedConfirm: "部分记录尚未同步到服务器。本机草稿会尽力保留；如有存储失败提示，请先保存成功。确认退出？",
   exitBusy: "正在保存或上传，暂时不能退出。",
 } as const;
 export type TranslationKey = keyof typeof zh;

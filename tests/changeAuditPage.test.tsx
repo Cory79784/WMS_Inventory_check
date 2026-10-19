@@ -2,7 +2,7 @@ import React,{act} from 'react';
 import {beforeAll,beforeEach,afterEach,it,expect,vi} from 'vitest';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),{JSDOM}=require('jsdom');
-const mock=vi.hoisted(()=>({loadTask:vi.fn(),listTasks:vi.fn(),saveResult:vi.fn(),taskStatus:vi.fn(),uploadPhoto:vi.fn(),fetchVersions:vi.fn(),downloadTask:vi.fn().mockResolvedValue({})}));
+const mock=vi.hoisted(()=>({managerStatus:vi.fn().mockResolvedValue({manager:true,configured:true}),loadTask:vi.fn(),listTasks:vi.fn(),saveResult:vi.fn(),taskStatus:vi.fn(),uploadPhoto:vi.fn(),fetchVersions:vi.fn(),downloadTask:vi.fn().mockResolvedValue({})}));
 vi.mock('../src/changeAudit/api',async()=>({...await vi.importActual('../src/changeAudit/api'),...mock}));
 vi.mock('../src/changeAudit/taskExport',()=>({downloadTaskResults:mock.downloadTask}));
 vi.mock('../src/services/snapshotCompare',()=>({fetchSnapshotVersions:mock.fetchVersions}));
@@ -21,7 +21,7 @@ beforeAll(async()=>{
  createRoot=(await import('react-dom/client')).createRoot;Page=(await import('../src/pages/ChangeAuditPage')).ChangeAuditPage;
 });
 beforeEach(async()=>{
- vi.clearAllMocks();localStorage.clear();sessionStorage.clear();task=fixture();sessionStorage.setItem('wms-change-audit-selected:H1',task.id);
+ vi.clearAllMocks();localStorage.clear();sessionStorage.clear();task=fixture();localStorage.setItem('wms-change-audit-selected:H1',task.id);
  mock.loadTask.mockResolvedValue(task);mock.listTasks.mockResolvedValue({tasks:[{id:task.id,createdAt:'2026-10-19',oldId:'old',newId:'new'}],activeImportId:'new'});
  mock.fetchVersions.mockResolvedValue({versions:[{importId:'new',versionNumber:2},{importId:'old',versionNumber:1}],activeImportId:'new'});
  mock.saveResult.mockImplementation(async(_h,_id,_location,data)=>({...data,revision:data.revision+1,savedAt:'2026-10-19T00:00:00Z'}));mock.taskStatus.mockResolvedValue({stale:false});
@@ -40,10 +40,10 @@ it('uses the shared original card and shortage buttons, emphasizes new book stoc
  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,750));});expect(mock.saveResult).not.toHaveBeenCalled();
  await click('少货');expect(container.textContent).toContain('确认少货');expect(container.querySelectorAll('input[type="number"]')).toHaveLength(1);
  await click('确认少货');await act(async()=>{await new Promise(resolve=>setTimeout(resolve,750));});
- expect(mock.saveResult).toHaveBeenLastCalledWith('H1',task.id,'103-001-1',expect.objectContaining({completed:true,lines:[expect.objectContaining({actual:4})]}));
+ expect(mock.saveResult).toHaveBeenLastCalledWith('H1',task.id,'103-001-1',expect.objectContaining({completed:true,lines:[expect.objectContaining({actual:4})]}),0);
  expect(container.textContent).toContain('已完成数量核查 1/3');
  await click('正常');await act(async()=>{await new Promise(resolve=>setTimeout(resolve,750));});
- expect(mock.saveResult).toHaveBeenLastCalledWith('H1',task.id,'103-001-1',expect.objectContaining({completed:true,lines:[expect.objectContaining({actual:5})]}));
+ expect(mock.saveResult).toHaveBeenLastCalledWith('H1',task.id,'103-001-1',expect.objectContaining({completed:true,lines:[expect.objectContaining({actual:5})]}),0);
 });
 it('walks in snake order, supports direct scans, and leaves non-target visual checks unfinished',async()=>{
  await click('下一个未完成目标');expect(container.querySelector('h2.font-mono')?.textContent).toBe('104-001-1');expect(container.textContent).toContain('变成空库位');
@@ -52,7 +52,7 @@ it('walks in snake order, supports direct scans, and leaves non-target visual ch
  await type(scanner,'103-001-1');await act(async()=>scanner.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Enter',bubbles:true})));
  expect(container.querySelector('h2.font-mono')?.textContent).toBe('103-001-1');expect(scanner.inputMode).toBe('none');
  await type(scanner,'999-001-1');await act(async()=>scanner.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Enter',bubbles:true})));
- expect(container.textContent).toContain('此库位不在当前任务中');expect(mock.saveResult).not.toHaveBeenCalled();expect(sessionStorage.getItem(`wms-change-audit-location:${task.id}`)).toBe('103-001-1');
+ expect(container.textContent).toContain('此库位不在当前任务中');expect(mock.saveResult).not.toHaveBeenCalled();expect(localStorage.getItem(`wms-change-audit-location:${task.id}`)).toBe('103-001-1');
 });
 it('disables actual-count writes for an expired reference version',async()=>{
  await act(async()=>root.unmount());root=createRoot(container);task.stale=true;
@@ -72,14 +72,14 @@ it('adds an identified surplus through the original modal with quantity buttons 
  const sku=container.querySelector('input[placeholder="扫描或输入外箱 SKU"]') as HTMLInputElement;await type(sku,'EXTRA-UI');
  expect(container.querySelectorAll('input[type="number"]')).toHaveLength(1);
  await click('确认添加多货');await act(async()=>{await new Promise(resolve=>setTimeout(resolve,750));});
- expect(mock.saveResult).toHaveBeenCalledWith('H1',task.id,'103-001-1',expect.objectContaining({completed:false,lines:expect.arrayContaining([expect.objectContaining({sku:'EXTRA-UI',actual:1})])}));
+ expect(mock.saveResult).toHaveBeenCalledWith('H1',task.id,'103-001-1',expect.objectContaining({completed:false,lines:expect.arrayContaining([expect.objectContaining({sku:'EXTRA-UI',actual:1})])}),0);
  await act(async()=>Array.from(container.querySelectorAll('button')).find(b=>b.textContent?.trim()==='正常')!.click());
  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,750));});expect(mock.saveResult.mock.calls.at(-1)[3].completed).toBe(true);
 });
 it('confirms an empty location through the original empty button without number inputs',async()=>{
  await click('下一个未完成目标');expect(container.textContent).toContain('旧版货物 / 残留检查');await click('确认为空库位');
  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,750));});
- expect(mock.saveResult).toHaveBeenLastCalledWith('H1',task.id,'104-001-1',expect.objectContaining({completed:true,emptyConfirmed:true,lines:[expect.objectContaining({actual:0})]}));
+ expect(mock.saveResult).toHaveBeenLastCalledWith('H1',task.id,'104-001-1',expect.objectContaining({completed:true,emptyConfirmed:true,lines:[expect.objectContaining({actual:0})]}),0);
 });
 it('exports the selected task by ID with its own language selector and still allows stale saved results',async()=>{
  const panel=Array.from(container.querySelectorAll('details')).find(d=>d.querySelector('summary')?.textContent==='本任务核查结果导出')!;
@@ -123,4 +123,24 @@ it('all-normal resets task extras and photo overrides without deleting original 
  finally {confirm.mockRestore();}
  expect(mock.saveResult.mock.calls.at(-1)[3]).toMatchObject({completed:true,notes:'',photoLines:{},ignoredPhotoIds:['photo-reset-task'],lines:[expect.objectContaining({sku:'SKU1',actual:5})]});
  expect(task.photos).toHaveLength(1);expect(container.querySelector('img[src*="photo-reset-task"]')).toBeNull();
+});
+it('shows only task execution on PDA and restores the selected task and location after a browser reopen',async()=>{
+ await click('下一个未完成目标');expect(localStorage.getItem(`wms-change-audit-location:${task.id}`)).toBe('104-001-1');
+ await act(async()=>root.unmount());sessionStorage.clear();vi.clearAllMocks();
+ Object.defineProperty(navigator,'userAgent',{configurable:true,value:'Android PDA Chrome'});
+ mock.managerStatus.mockResolvedValue({manager:false,configured:true});
+ root=createRoot(container);await act(async()=>root.render(<Page currentHall="H1"/>));
+ expect(container.querySelector('h2.font-mono')?.textContent).toBe('104-001-1');
+ expect(container.textContent).not.toContain('任务管理（PC）');expect(container.textContent).not.toContain('本任务核查结果导出');
+ expect(mock.fetchVersions).not.toHaveBeenCalled();expect(container.querySelectorAll('input[type="number"]')).toHaveLength(0);
+ Object.defineProperty(navigator,'userAgent',{configurable:true,value:'Desktop Chrome'});mock.managerStatus.mockResolvedValue({manager:true,configured:true});
+});
+it('returns to the task list on revocation while keeping an unsent draft quarantined',async()=>{
+ const {sessionFor}=await import('../src/changeAudit/session');const {AuditError}=await import('../src/changeAudit/api');
+ const s=sessionFor(task);await act(async()=>s.edit('103-001-1',{...s.result('103-001-1'),notes:'offline draft'}));
+ mock.taskStatus.mockRejectedValueOnce(new AuditError('TASK_UNAVAILABLE',410));mock.listTasks.mockResolvedValue({tasks:[],activeImportId:'new'});
+ await act(async()=>s.checkVersion(true));
+ expect(container.querySelector('h2.font-mono')).toBeNull();expect(container.textContent).toContain('任务已撤回');
+ expect(localStorage.getItem('wms-change-audit-selected:H1')).toBe('');expect(s.dirty).toBe(true);
+ expect(localStorage.getItem(s.key)).toContain('offline draft');
 });

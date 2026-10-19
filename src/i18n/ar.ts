@@ -1,5 +1,27 @@
 import type { TranslationKey } from './zh';
 export const ar: Record<TranslationKey, string> = {
+  auditArchiveDraft: "حفظ نسخة منفصلة من المسودة وفتح المهمة الصالحة",
+  auditArchive: "عرض المهام المحذوفة (للتصدير فقط)",
+  auditManage: "إدارة المهام (PC)",
+  auditManageHint: "اضبط CHANGE_AUDIT_MANAGEMENT_KEY في Cloudflare (24 رمزًا عشوائيًا على الأقل)، ثم فوّض هذا الكمبيوتر. لا يحتاج PDA إلى المفتاح.",
+  auditManageKey: "مفتاح الإدارة",
+  auditUnlock: "تفويض الكمبيوتر",
+  auditLock: "إلغاء تفويض الكمبيوتر",
+  auditPublish: "نشر إلى PDA",
+  auditWithdraw: "سحب النشر",
+  auditDelete: "حذف المهمة",
+  auditDeleteConfirm: "حذف المهمة من PDA؟ تُحفظ النتائج للتصدير بمعرّف المهمة على PC.",
+  auditUnsentChange: "ستُحفظ المسودات غير المتزامنة محليًا بصورة منفصلة. متابعة تغيير الحالة؟",
+  auditStateDRAFT: "مسودة",
+  auditStatePUBLISHED: "منشورة",
+  auditStateWITHDRAWN: "مسحوبة (للقراءة فقط)",
+  auditStateDELETED: "محذوفة",
+  auditUnavailable: "المهمة مسحوبة أو محذوفة أو أُعيد نشرها. المسودات المحلية محفوظة منفصلة. اختر مهمة صالحة.",
+  auditUnavailableDraft: "تغيّر التفويض. توقف التحرير والمزامنة؛ المسودات محفوظة محليًا بصورة منفصلة.",
+  auditBackTasks: "قائمة المهام",
+  resumeStorageError: "تعذر حفظ المسودة محليًا بأمان. أبق الصفحة مفتوحة حتى ينجح الحفظ.",
+  resumeConflict: "تختلف المسودة المحلية عن الخادم. تم الاحتفاظ بها وإيقاف الكتابة التلقائية.",
+
   auditExportSavedOnly: "الإصدار قديم: التصدير يشمل نتائج الخادم المحفوظة فقط دون المسودات المحلية.",
 
   auditQtyMinus: "إنقاص واحد",
@@ -372,6 +394,6 @@ export const ar: Record<TranslationKey, string> = {
   photoUploadPendingHint: "تم رفع الصورة، ويجري حفظ ارتباطها بسجل الفحص تلقائيًا.",
   photoUnsavedBadge: "صورة بانتظار الحفظ",
   exitConfirm: "هل تريد الخروج من نظام تدقيق المخزون؟",
-  exitUnsavedConfirm: "توجد بيانات فحص غير محفوظة. ستفقد عند الخروج. هل تريد المتابعة؟",
+  exitUnsavedConfirm: "لم تتم مزامنة بعض البيانات. تُحفظ المسودات محليًا قدر الإمكان؛ عند ظهور خطأ تخزين، انتظر نجاح الحفظ قبل الخروج. متابعة؟",
   exitBusy: "الحفظ أو رفع الصور جارٍ، لا يمكن الخروج الآن.",
 };

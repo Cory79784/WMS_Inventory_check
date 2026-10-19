@@ -20,7 +20,7 @@ describe('PDA system exit safety', () => {
     guard(true, false);
     const ask = vi.fn(() => false);
     expect(confirmPdaExit(ask, vi.fn())).toBe(false);
-    expect(ask).toHaveBeenCalledWith(expect.stringContaining('未保存'));
+    expect(ask).toHaveBeenCalledWith(expect.stringContaining('尚未同步'));
     ask.mockReturnValue(true);
     expect(confirmPdaExit(ask, vi.fn())).toBe(true);
   });

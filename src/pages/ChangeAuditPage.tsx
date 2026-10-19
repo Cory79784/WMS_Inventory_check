@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Keyboard, ScanLine, ChevronLeft, ChevronRight } from 'lucide-react';
+import { isHandheldDevice } from '../utils/device';
 import { t } from '../i18n';
 import { registerLanguageSafety } from '../i18n/safety';
 import type { TranslationKey } from '../i18n/zh';
@@ -11,7 +12,7 @@ import { TaskInspectionEditor } from '../changeAudit/TaskInspectionEditor';
 import { TaskResultExport } from '../changeAudit/TaskResultExport';
 import { defaultRoute, isAnomaly } from '../changeAudit/model';
 import type { RouteConfig, Target } from '../changeAudit/model';
-import { auditId, createTask, listTasks, loadTask } from '../changeAudit/api';
+import { auditId, createTask, listTasks, loadTask, managerStatus, unlockManager, lockManager, changeLifecycle } from '../changeAudit/api';
 import type { TaskSummary } from '../changeAudit/api';
 import { sessionFor } from '../changeAudit/session';
 import type { AuditSession } from '../changeAudit/session';
@@ -19,6 +20,8 @@ const inputClass = 'border border-slate-200 rounded-lg px-3 py-2 bg-white text-s
 const buttonClass = 'border border-slate-200 rounded-lg px-3 py-2 text-sm disabled:opacity-40';
 const riskKeys = { multi: 'auditRiskMulti', similarCustomer: 'auditRiskCustomer', variant: 'auditRiskVariant', nearby: 'auditRiskNearby', move: 'auditRiskMove' } as const;
 export function auditError(reason: string): string {
+    if(['TASK_UNAVAILABLE','TASK_NOT_FOUND','PUBLICATION_CONFLICT'].includes(reason)) return t('auditUnavailable');
+    if(['MANAGEMENT_REQUIRED','MANAGEMENT_DENIED','MANAGEMENT_NOT_CONFIGURED'].includes(reason)) return t('auditManageHint');
     if (reason === 'STALE_VERSION')
         return t('auditStale');
     if (reason === 'REVISION_CONFLICT')
@@ -32,7 +35,7 @@ export function auditError(reason: string): string {
 const categoryKey = (target: Target) => target.category === 'NEW_LOCATION' ? 'compareNewLocation' : target.category === 'EMPTIED_LOCATION' ? 'compareEmptiedLocation' : 'compareChangedLocation';
 function safeRead(key: string): string {
     try {
-        return sessionStorage.getItem(key) || '';
+        return localStorage.getItem(key) || '';
     }
     catch {
         return '';
@@ -40,14 +43,19 @@ function safeRead(key: string): string {
 }
 function remember(key: string, value: string) {
     try {
-        sessionStorage.setItem(key, value);
+        localStorage.setItem(key, value);
     }
-    catch { /* Server data does not depend on browser preferences. */ }
+    catch { window.dispatchEvent(new window.Event('wms-draft-storage-error')); }
 }
 export function ChangeAuditPage({ currentHall, active = true }: {
     currentHall: HallId;
     active?: boolean;
 }) {
+    const handheld=isHandheldDevice();
+    const [quarantined,setQuarantined]=useState<AuditSession|null>(null);
+    const [lifecycleBusy,setLifecycleBusy]=useState(false);
+    const [archived,setArchived]=useState(false);
+    const [manager,setManager]=useState(false), [credential,setCredential]=useState(''), [ready,setReady]=useState(false);
     const [versions, setVersions] = useState<{
         versions: SnapshotVersion[];
         activeImportId: string | null;
@@ -73,7 +81,7 @@ export function ChangeAuditPage({ currentHall, active = true }: {
         }
         catch (e) {
             if (token === request.current && alive.current)
-                setError(auditError((e as Error).message));
+                { setError(auditError((e as Error).message)); if(['TASK_UNAVAILABLE','TASK_NOT_FOUND'].includes((e as Error).message)) {setSession(null);remember(taskKey,'');} }
         }
         finally {
             if (token === request.current && alive.current)
@@ -83,14 +91,19 @@ export function ChangeAuditPage({ currentHall, active = true }: {
     useEffect(() => {
         alive.current = true;
         const abort = new AbortController();
-        void Promise.all([fetchSnapshotVersions(currentHall, abort.signal), listTasks(currentHall, abort.signal)]).then(async ([metadata, list]) => {
+        void managerStatus().then(async access=> {
+            if(abort.signal.aborted) return;
+            const canManage=access.manager && !handheld; setManager(canManage); setReady(true);
+            return Promise.all([canManage ? fetchSnapshotVersions(currentHall, abort.signal) : Promise.resolve(null), listTasks(currentHall, abort.signal)]);
+        }).then(async response => {
+            if(!response) return;
+            const [metadata,list]=response;
             if (abort.signal.aborted)
                 return;
             setVersions(metadata);
             setTasks(list.tasks);
             const selected = safeRead(taskKey);
-            if (selected)
-                await open(selected);
+            if(selected) await open(selected);
         }).catch(e => {
             if (!abort.signal.aborted)
                 setError(auditError(e.message));
@@ -100,6 +113,12 @@ export function ChangeAuditPage({ currentHall, active = true }: {
         });
         return () => { alive.current = false; abort.abort(); request.current++; };
     }, [currentHall]);
+    useEffect(()=> {
+        const refresh=()=>{if(!active || document.visibilityState==='hidden') return; void listTasks(currentHall,undefined,manager && archived).then(list=>{if(alive.current) setTasks(list.tasks);}).catch(()=>{}); if(session) void session.checkVersion(true);};
+        const timer=setInterval(refresh,30000);
+        window.addEventListener('focus',refresh);
+        return ()=>{clearInterval(timer);window.removeEventListener('focus',refresh);};
+    },[currentHall,active,session,manager,archived]);
     const start = async (comparison: SnapshotComparison) => {
         setCreating(true);
         setError('');
@@ -124,15 +143,32 @@ export function ChangeAuditPage({ currentHall, active = true }: {
                 await open(saved.id);
             if (alive.current)
                 setTasks(previous => previous.some(task => task.id === saved.id) ? previous : [{ id: saved.id, oldId: payload.oldId, newId: payload.newId, createdAt: saved.task?.createdAt || new Date().toISOString() }, ...previous].slice(0, 100));
+            createToken.current=null;
         }
         catch (e) {
             if (alive.current)
-                setError(auditError((e as Error).message));
+                { setError(auditError((e as Error).message)); if(['TASK_UNAVAILABLE','TASK_NOT_FOUND'].includes((e as Error).message)) {setSession(null);remember(taskKey,'');} }
         }
         finally {
             if (alive.current)
                 setCreating(false);
         }
+    };
+    const authorize=async () => { try { await unlockManager(credential); setCredential(''); window.location.reload(); } catch(e) {setError(auditError((e as Error).message));} };
+    const lifecycle=async (status:string) => {
+        if(!session || lifecycleBusy || (status==='DELETED' && !window.confirm(t('auditDeleteConfirm')))) return;
+        setLifecycleBusy(true);setError('');
+        try {
+            await Promise.all([...session.drafts.keys()].map(code=>session.flush(code)));
+            if(session.dirty && !window.confirm(t('auditUnsentChange'))) return;
+            const state=await changeLifecycle(currentHall,session.task.id,status,session.task.publicationRevision || 0);
+            session.task.lifecycle=state.lifecycle;session.task.publicationRevision=state.publicationRevision;
+            if(session.dirty) session.unavailable=true;
+            if(status==='DELETED') {if(session.dirty) setQuarantined(session);setSession(null);remember(taskKey,'');}
+            else await open(session.task.id);
+            setTasks((await listTasks(currentHall,undefined,archived)).tasks);
+        } catch(e) {setError(auditError((e as Error).message));}
+        finally {setLifecycleBusy(false);}
     };
     const reload = async () => {
         if (!session)
@@ -150,15 +186,18 @@ export function ChangeAuditPage({ currentHall, active = true }: {
     return <div className="max-w-2xl mx-auto px-2 sm:px-4 py-3 space-y-3 font-sans pb-24">
   <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
    <h2 className="text-lg font-bold text-slate-800">{currentHall} · {t('auditMenu')}</h2><p className="text-xs text-slate-500">{t('auditIntro')}</p>
+   {!handheld && ready && !manager && <details><summary className="text-sm cursor-pointer">{t('auditManage')}</summary><p className="text-xs text-slate-500 py-2">{t('auditManageHint')}</p><input type="password" aria-label={t('auditManageKey')} autoComplete="off" className={inputClass} value={credential} onChange={e=>setCredential(e.target.value)}/><button type="button" className={buttonClass} disabled={!credential} onClick={()=>void authorize()}>{t('auditUnlock')}</button></details>}
+   {manager && <><button className={buttonClass} onClick={()=>void lockManager().then(()=>window.location.reload())}>{t('auditLock')}</button><label className="text-xs block"><input type="checkbox" checked={archived} onChange={e=>{const value=e.target.checked;setArchived(value);void listTasks(currentHall,undefined,value).then(list=>setTasks(list.tasks));}}/> {t('auditArchive')}</label></>}
    <label className="block text-sm">{t('auditTasks')}<select aria-label={t('auditTasks')} className={`${inputClass} w-full mt-1`} disabled={loading || creating} value={session?.task.id || ''} onChange={e => {
             if (e.target.value)
                 void open(e.target.value);
-        }}><option value="">{t('auditChooseTask')}</option>{session && !tasks.some(task => task.id === session.task.id) && <option value={session.task.id}>{session.task.createdAt} · {session.task.id}</option>}{tasks.map(task => <option key={task.id} value={task.id}>{task.createdAt} · {task.id.slice(-8)} · {versions?.versions.find(v => v.importId === task.oldId)?.versionNumber ?? '?'} → {versions?.versions.find(v => v.importId === task.newId)?.versionNumber ?? '?'}</option>)}</select></label>
+        }}><option value="">{t('auditChooseTask')}</option>{session && !tasks.some(task => task.id === session.task.id) && <option value={session.task.id}>{session.task.createdAt} · {session.task.id}</option>}{tasks.map(task => <option key={task.id} value={task.id}>{task.createdAt} · {t(('auditState'+(task.status || 'DRAFT')) as TranslationKey)} · {task.id.slice(-8)} · {versions?.versions.find(v => v.importId === task.oldId)?.versionNumber ?? '?'} → {versions?.versions.find(v => v.importId === task.newId)?.versionNumber ?? '?'}</option>)}</select></label>
    {session && <button type="button" className={`${buttonClass} text-slate-500`} disabled={session.busy} onClick={() => void reload()}>{t('auditReload')}</button>}
    {loading && <p role="status">{t('compareLoading')}</p>}
    {error && <p role="alert" className="text-sm text-red-600">{error}<button type="button" className="ml-2 underline" onClick={() => window.location.reload()}>{t('retry')}</button></p>}
   </div>
-  <details className="bg-white border border-slate-200 rounded-xl p-4" open={!session}>
+  {quarantined?.dirty && <div className="bg-amber-50 border rounded-xl p-3 text-xs space-y-2"><p>{t('auditUnavailableDraft')}</p><button className={buttonClass} disabled={quarantined.busy} onClick={()=>void quarantined.archiveDrafts().then(()=>{const id=quarantined.task.id;setQuarantined(null);return open(id);}).catch(e=>setError(auditError(e.message)))}>{t('auditArchiveDraft')}</button></div>}
+  {manager && <details className="bg-white border border-slate-200 rounded-xl p-4" open={!session}>
    <summary className="font-semibold cursor-pointer">{t('compareTitle')} · {t('auditCreate')}</summary>
    <div className="space-y-3 pt-3">
     <p className="text-xs text-slate-500">{t('auditRouteHint')}</p>
@@ -168,15 +207,19 @@ export function ChangeAuditPage({ currentHall, active = true }: {
     <label className="text-xs">{t('exportLanguageLabel')} <select value={language} onChange={e => setLanguage(e.target.value as ExportLanguage)} className={inputClass}><option value="zh">中文</option><option value="en">English</option><option value="de">Deutsch</option></select></label>
     {versions && <SnapshotComparisonPanel key={currentHall} hallId={currentHall} language={language} initialVersions={versions} creating={creating} onStart={comparison => void start(comparison)}/>}
    </div>
-  </details>
-  {session && <TaskWorkspace key={session.task.id} session={session} active={active}/>}
+  </details>}
+  {manager && session && session.task.lifecycle!=='DELETED' && <div className="bg-white p-3 rounded-xl border flex flex-wrap gap-2 items-center"><span className="text-xs">{t(('auditState'+(session.task.lifecycle || 'DRAFT')) as TranslationKey)}</span>{session.task.lifecycle!=='PUBLISHED' && <button className={buttonClass} disabled={session.task.stale || lifecycleBusy} onClick={()=>void lifecycle('PUBLISHED')}>{t('auditPublish')}</button>}{session.task.lifecycle==='PUBLISHED' && <button className={buttonClass} disabled={lifecycleBusy} onClick={()=>void lifecycle('WITHDRAWN')}>{t('auditWithdraw')}</button>}<button className={`${buttonClass} text-red-700`} disabled={lifecycleBusy} onClick={()=>void lifecycle('DELETED')}>{t('auditDelete')}</button></div>}
+  {session && <TaskWorkspace key={session.task.id} session={session} active={active} manager={manager} onUnavailable={()=>{if(session.dirty) setQuarantined(session);setSession(null);remember(taskKey,'');void listTasks(currentHall).then(list=>setTasks(list.tasks));setError(t('auditUnavailable'));}}/>}
  </div>;
 }
-function TaskWorkspace({ session, active }: {
+function TaskWorkspace({ session, active, manager, onUnavailable }: {
+    manager:boolean;
+    onUnavailable:()=>void;
     session: AuditSession;
     active: boolean;
 }) {
     useSyncExternalStore(session.subscribe, session.snapshot);
+    useEffect(()=> { if(session.unavailable && !(manager && ['DELETED','WITHDRAWN'].includes(session.task.lifecycle || ''))) onUnavailable(); },[session.unavailable]);
     const task = session.task, all = [...task.plan.route, ...task.plan.special];
     const previouslyActive = useRef(active);
     useEffect(() => {
@@ -209,7 +252,7 @@ function TaskWorkspace({ session, active }: {
             input.focus({ preventScroll: true });
         }
     }, [location, active]);
-    const select = (code: string) => { setLocation(code); remember(locationKey, code); setManual(false); setScan(''); setScanError(''); };
+    const select = (code: string) => { void session.flush(location); setLocation(code); remember(locationKey, code); setManual(false); setScan(''); setScanError(''); };
     const go = () => {
         const code = scan.trim().toUpperCase();
         if (all.includes(code))
@@ -243,6 +286,9 @@ function TaskWorkspace({ session, active }: {
   <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
    <p className="text-sm font-semibold">{t('auditCurrent')} {task.hall} · V{task.plan.comparison.oldVersion.versionNumber} → V{task.plan.comparison.newVersion.versionNumber}</p>
    <p className="text-xs text-slate-500">{t('auditProgress', { done, total: all.length })}</p>
+   {session.unavailable && <p role="alert" className="text-red-700 text-sm">{t('auditUnavailableDraft')}<button className="underline ml-2" onClick={onUnavailable}>{t('auditBackTasks')}</button></p>}
+   {task.lifecycle==='DELETED' && <p role="alert" className="text-red-700 text-sm">{t('auditStateDELETED')} · {t('auditTaskExport')}</p>}
+   {task.lifecycle==='WITHDRAWN' && <p role="alert">{t('auditStateWITHDRAWN')}</p>}
    {task.stale && <p role="alert" className="text-amber-800 bg-amber-50 p-3 rounded-lg text-sm">{t('auditStale')}</p>}
    {session.storageError && <p role="alert" className="text-red-600 text-sm">{t('auditStorage')}</p>}
    <div className="flex gap-2"><input aria-label={t('auditScanner')} ref={scanner} inputMode={manual ? 'text' : 'none'} value={scan} placeholder={t('auditScanner')} onChange={e => setScan(e.target.value)} onKeyDown={e => {
@@ -265,12 +311,12 @@ function TaskWorkspace({ session, active }: {
    <div className="flex flex-wrap justify-between items-center gap-2"><span className="text-xs text-blue-800 bg-blue-50 px-3 py-1 rounded-full">{t(categoryKey(target))}</span></div>
    <p className="text-sm text-slate-500">{t(status(location))}{isAnomaly(target, result) ? ' · ' + t('auditAnomaly') : ''}</p>
    {target.risks.length ? <div className="bg-amber-50 rounded-lg p-3 text-xs text-amber-900 space-y-2"><p className="font-medium">{t('auditFocused')}</p>{target.risks.map((risk, i) => <p key={i}>{t(riskKeys[risk.kind], risk.params)}</p>)}</div> : <p className="text-xs text-slate-500">{t('auditOrdinary')}</p>}
-   <TaskInspectionEditor key={location} session={session} target={target} result={result} disabled={task.stale || draft?.error === 'REVISION_CONFLICT'}/>
+   <TaskInspectionEditor key={location} session={session} target={target} result={result} disabled={task.stale || session.unavailable || (task.lifecycle==='WITHDRAWN' || task.lifecycle==='DELETED') || draft?.error === 'REVISION_CONFLICT'}/>
    <div role="status" className={`text-sm ${draft?.error ? 'text-red-600' : 'text-slate-500'}`}>{draft?.error ? auditError(draft.error) : draft?.saving ? t('auditSaving') : draft?.dirty ? t('auditSavePending') : task.results[location]?.savedAt ? `${t('saved')} · ${new Date(task.results[location].savedAt!).toLocaleTimeString()}` : t('auditUnsaved')}
     {draft?.error && draft.error !== 'REVISION_CONFLICT' && !task.stale && <button type="button" className="ml-2 underline" onClick={() => void session.flush(location)}>{t('retry')}</button>}</div>
    <details className="text-xs text-slate-500"><summary className="cursor-pointer">{t('auditCompareDetails')}</summary>{target.changes.map(change => <p className="font-mono py-1" key={change.sku}>{change.sku}: {change.oldQty} → {change.newQty} ({change.differenceQty > 0 ? '+' : ''}{change.differenceQty})</p>)}</details>
    <div className="flex justify-between gap-2"><button type="button" className={`${buttonClass} flex gap-1 items-center`} disabled={all.indexOf(location) <= 0} onClick={() => select(all[all.indexOf(location) - 1])}><ChevronLeft className="w-4 h-4"/>{t('auditPrev')}</button><button type="button" className={`${buttonClass} flex gap-1 items-center`} onClick={next}>{t('auditNext')}<ChevronRight className="w-4 h-4"/></button></div>
   </section>}
-  <TaskResultExport session={session}/>
+  {manager && <TaskResultExport session={session}/>}
  </div>;
 }

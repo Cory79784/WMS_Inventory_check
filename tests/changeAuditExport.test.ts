@@ -5,13 +5,13 @@ import {buildTaskResultWorkbook,type TaskExportData} from '../src/changeAudit/ta
 let mf:Miniflare,db:Awaited<ReturnType<Miniflare['getD1Database']>>,task:AuditTask;
 const A='export-task-A',B='export-task-B';
 const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1ZkAAAAASUVORK5CYII=';
-const call=(action:string,id=A,method='GET',data?:unknown,extra:Record<string,string>={})=>mf.dispatchFetch(`http://localhost/api/inventory/change-audit/${action}?${new URLSearchParams({hallId:'H1',taskId:id,...extra})}`,{method,headers:{Origin:'http://localhost','Content-Type':'application/json'},...(data===undefined?{}:{body:JSON.stringify(data)})});
+const call=(action:string,id=A,method='GET',data?:unknown,extra:Record<string,string>={})=>mf.dispatchFetch(`http://localhost/api/inventory/change-audit/${action}?${new URLSearchParams({hallId:'H1',taskId:id,...extra})}`,{method,headers:{Origin:'http://localhost','X-Audit-Management-Key':'test-management-capability-123456789','X-Audit-Publication-Revision':'0','Content-Type':'application/json'},...(data===undefined?{}:{body:JSON.stringify(data)})});
 const exported=async(id=A,mode='differences')=>await(await call('export',id,'GET',undefined,{mode})).json() as TaskExportData;
 async function save(location:string,result:AuditResult,id=A){const response=await call('save',id,'POST',result,{location});expect(response.status).toBe(200);return await response.json() as AuditResult;}
-async function photo(id:string,location:string,lineId:string,taskId=A){return mf.dispatchFetch(`http://localhost/api/inventory/change-audit/photo?${new URLSearchParams({hallId:'H1',taskId,location,lineId,photoId:id})}`,{method:'POST',headers:{Origin:'http://localhost','Content-Type':'image/png'},body:Buffer.from(png,'base64')});}
+async function photo(id:string,location:string,lineId:string,taskId=A){return mf.dispatchFetch(`http://localhost/api/inventory/change-audit/photo?${new URLSearchParams({hallId:'H1',taskId,location,lineId,photoId:id})}`,{method:'POST',headers:{Origin:'http://localhost','X-Audit-Management-Key':'test-management-capability-123456789','X-Audit-Publication-Revision':'0','Content-Type':'image/png'},body:Buffer.from(png,'base64')});}
 beforeAll(async()=>{
  const bundle=await build({entryPoints:['worker/index.ts'],bundle:true,write:false,format:'esm',platform:'browser',target:'es2022'});
- mf=new Miniflare({modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2024-10-11',d1Databases:['DB'],r2Buckets:['PHOTO_BUCKET'],bindings:{ENVIRONMENT:'test'}});
+ mf=new Miniflare({modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2024-10-11',d1Databases:['DB'],r2Buckets:['PHOTO_BUCKET'],bindings:{ENVIRONMENT:'test',CHANGE_AUDIT_MANAGEMENT_KEY:'test-management-capability-123456789'}});
  await mf.dispatchFetch('http://localhost/api/health');db=await mf.getD1Database('DB');
  for(const [id,v] of [['old',1],['new',2],['future',3]]) await db.prepare("INSERT INTO inventory_imports(import_id,hall_id,version_number,original_filename,file_sha256,uploaded_by,status) VALUES(?,'H1',?,'fixture.xlsx',?,'test','PUBLISHED')").bind(id,v,id).run();
  await db.prepare("UPDATE active_hall_imports SET active_import_id='new' WHERE hall_id='H1'").run();

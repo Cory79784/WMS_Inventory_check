@@ -1,3 +1,4 @@
+import { putPhotoDraft, readPhotoDrafts, deletePhotoDraft } from '../changeAudit/photoDrafts';
 import { InspectionSkuCard } from '../components/InspectionSkuCard';
 import { InspectionShortageModal, InspectionSurplusModal } from '../components/InspectionModals';
 import React, { useState, useEffect, useRef } from 'react';
@@ -47,10 +48,51 @@ interface LocationDraft {
   empty: boolean;
   uploads: PhotoUpload[];
 }
-// Page-session drafts only: no persistence, offline queue or background processing.
-const locationDrafts = new Map<string, LocationDraft>();
+// Original inspections retain their own hall/location/reference-version namespace.
+let draftStorageFailed=false;
+const storedFiles=new WeakSet<File>();
+const storagePrefix='wms-original-draft:';
+function storageFailure() { draftStorageFailed=true; window.dispatchEvent(new window.Event('wms-draft-storage-error')); }
+class LocationDraftMap extends Map<string,LocationDraft> {
+  set(key:string,value:LocationDraft) {
+    super.set(key,value);
+    try {
+      if(hasDraftChanges(value)) window.localStorage.setItem(storagePrefix+key,JSON.stringify({...value,uploads:value.uploads.filter(u=>u.status!=='saved').map(({file,previewUrl,...u})=>u)},(key,value)=>key==='previewUrl' && typeof value==='string' && value.startsWith('blob:') ? undefined : value));
+      else window.localStorage.removeItem(storagePrefix+key);
+    }catch {storageFailure();}
+    for(const upload of value.uploads) {
+      if(upload.status==='saved') {if(globalThis.indexedDB) void deletePhotoDraft('original:'+upload.id).catch(storageFailure);continue;}
+      if(upload.file && !storedFiles.has(upload.file)) {
+        storedFiles.add(upload.file);
+        void putPhotoDraft({id:'original:'+upload.id,taskId:'original:'+key,location:value.data.locationCode,lineId:upload.lineId || '',file:upload.file}).catch(()=>{storedFiles.delete(upload.file);storageFailure();});
+      }
+    }
+    return this;
+  }
+}
+const locationDrafts = new LocationDraftMap();
+async function readLocationDraft(key:string):Promise<LocationDraft|undefined> {
+  const memory=locationDrafts.get(key);if(memory) return memory;
+  let saved:LocationDraft|undefined;
+  try { saved=JSON.parse(window.localStorage.getItem(storagePrefix+key) || 'null') || undefined; } catch {storageFailure();}
+  if(!saved || !saved.data || !Array.isArray(saved.skus)) return undefined;
+  const files=globalThis.indexedDB ? await readPhotoDrafts('original:'+key).catch(()=>{storageFailure();return [];}) : [];
+  saved.uploads=(saved.uploads || []).map(upload=> {
+    const file=files.find(f=>f.id==='original:'+upload.id)?.file;
+    if(file) return {...upload,file,status:'error' as const,previewUrl:URL.createObjectURL(file)};
+    storageFailure();return {...upload,status:'error' as const};
+  });
+  locationDrafts.set(key,saved);return saved;
+}
+const originalFlushers=new Set<()=>void>();
+export function flushInspectionDrafts() { originalFlushers.forEach(flush=>flush()); }
+
 export const hasUnsavedInspectionDrafts = () => [...locationDrafts.values()].some(hasDraftChanges);
 const locationKey = (hall: string, code: string, version: string) => `${hall}:${code.toUpperCase()}:${version}`;
+const baselineFingerprint=(data:LocationAuditData)=>JSON.stringify([
+  data.referenceImportId,data.inspection?.inspectionId,data.inspection?.completedAt,data.inspection?.notes || '',Boolean(data.inspection?.isEmptyConfirmed),
+  data.skus.map(s=>[s.sku,s.actualQty ?? null,s.differenceQty ?? null,s.discrepancyType || null,s.notes || '',Boolean(s.isReturn),s.returnCode || '']).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))),
+  (data.inspection?.photos || []).map(p=>[p.photoId,p.lineId || '']).sort((a,b)=>a[0].localeCompare(b[0]))]);
 const hasDraftChanges = (draft: LocationDraft) =>
   JSON.stringify(draft.skus) !== JSON.stringify(draft.data.skus) ||
   JSON.stringify(draft.photos) !== JSON.stringify(draft.data.inspection?.photos || []) ||
@@ -74,6 +116,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   allowFileTransfer = !isHandheldDevice(),
 }) => {
   // Input search state
+  const [resumeError,setResumeError]=useState(false);
   const [inputLoc, setInputLoc] = useState('');
   const [manualInput, setManualInput] = useState(false);
   // Android scanner services may inject text through the IME; match DeviceTestPage.
@@ -157,9 +200,10 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   const photoBusy = uploads.some((upload) => upload.status === 'uploading');
   const photoFailed = uploads.some((upload) => upload.status === 'error');
   useEffect(() => {
-    if (locData) locationDrafts.set(locationKey(locData.hallId, locData.locationCode, locData.referenceImportId), {
+    if (locData && locData.hallId===currentHall) locationDrafts.set(locationKey(locData.hallId, locData.locationCode, locData.referenceImportId), {
       data: locData, skus: skuList, photos, notes: locationNotes, empty: isEmptyConfirmed, uploads,
     });
+    if(draftStorageFailed) setResumeError(true);
   }, [locData, skuList, photos, locationNotes, isEmptyConfirmed, uploads]);
 
   // Language switching is blocked while any location is saving/uploading.
@@ -244,12 +288,16 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
 
     try {
       const freshData = await fetchLocationAudit(currentHall, loc);
-      const cachedDraft = locationDrafts.get(locationKey(currentHall, loc, freshData.referenceImportId));
+      const cachedDraft = await readLocationDraft(locationKey(currentHall, loc, freshData.referenceImportId));
+      if(cachedDraft && hasDraftChanges(cachedDraft) && baselineFingerprint(cachedDraft.data)!==baselineFingerprint(freshData)) {
+        throw new Error(t('resumeConflict'));
+      }
       const draft = cachedDraft && hasDraftChanges(cachedDraft) ? cachedDraft : undefined;
       const data = draft?.data || { ...freshData, skus: freshData.skus.map((item: LocationSkuItem, index: number) => ({
         ...item, lineId: item.lineId || `book:${item.sku}:${index}`,
       })) };
       if (id !== requestId.current) return;
+      try {window.localStorage.setItem(`wms-original-location:${currentHall}`,data.locationCode);}catch{setResumeError(true);}
       setLocData(data);
       setPhotoTargetLine('');
       setInputLoc(androidScanner ? '' : data.locationCode);
@@ -285,7 +333,8 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
   };
 
   useEffect(() => {
-    if (initialLocation) void handleQueryLocation(initialLocation);
+    let remembered='';try {remembered=window.localStorage.getItem(`wms-original-location:${currentHall}`) || '';}catch{}
+    if (initialLocation || remembered) void handleQueryLocation(initialLocation || remembered);
   }, [initialLocation, currentHall]);
 
   // Handle Scanner Enter Key
@@ -560,6 +609,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
       if (draft) {
         draft.uploads = draft.uploads.map((item) => item.id === task.id ? { ...item, ...patch } : item);
         if (photo) draft.photos = [...draft.photos, photo];
+        locationDrafts.set(key,draft);
       }
       if (activeKey.current === key) {
         setUploads((prev) => prev.map((item) => item.id === task.id ? { ...item, ...patch } : item));
@@ -577,6 +627,7 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
         photoId: result.photoId, objectKey: result.objectKey,
         previewUrl: localPreview, lineId: task.lineId ?? null, sku: task.sku || undefined,
       });
+      if(globalThis.indexedDB) void deletePhotoDraft('original:'+task.id).catch(storageFailure);
       triggerHaptic(true);
     } catch (error) {
       update({ status: 'error' });
@@ -723,8 +774,23 @@ export const LocationInspectionPage: React.FC<LocationInspectionPageProps> = ({
     return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current); };
   }, [currentSignature, locData, saving, loading, photoBusy, photoFailed, uploadingSurplusPhoto, shortageModalSku, showSurplusModal]);
 
+  const lifecycleFlush=useRef(()=>{});
+  lifecycleFlush.current=()=> {
+    if(locData && locData.hallId===currentHall) locationDrafts.set(locationKey(locData.hallId,locData.locationCode,locData.referenceImportId),{data:locData,skus:skuList,photos,notes:locationNotes,empty:isEmptyConfirmed,uploads});
+    if(unsavedAutoChanges.current && !saving && !loading && !photoBusy && !photoFailed && !uploadingSurplusPhoto && !showSurplusModal && !shortageModalSku) void handleSaveInspection(skuList,isEmptyConfirmed,locationNotes,photos,false,true);
+  };
+  useEffect(()=> {
+    const flush=()=>lifecycleFlush.current();
+    const hidden=()=>{if(document.visibilityState==='hidden') flush();};
+    const failed=()=>setResumeError(true);
+    originalFlushers.add(flush);
+    window.addEventListener('beforeunload',flush);window.addEventListener('pagehide',flush);document.addEventListener('visibilitychange',hidden);window.addEventListener('wms-draft-storage-error',failed);
+    return ()=>{flush();originalFlushers.delete(flush);window.removeEventListener('beforeunload',flush);window.removeEventListener('pagehide',flush);document.removeEventListener('visibilitychange',hidden);window.removeEventListener('wms-draft-storage-error',failed);};
+  },[]);
+
   return (
     <div className="max-w-2xl mx-auto px-2 sm:px-4 py-3 space-y-3 font-sans pb-24">
+      {resumeError && <p role="alert" className="bg-red-50 text-red-700 p-3 text-sm rounded-lg">{t('resumeStorageError')}</p>}
       {/* Top Banner: Hall & Active Version Status */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-2.5 flex items-center justify-between text-xs">
         <div className="flex items-center gap-2">

@@ -3,11 +3,11 @@ import {build} from 'esbuild';import {Miniflare} from 'miniflare';
 import {blankResult,defaultRoute} from '../src/changeAudit/model';import type {AuditTask} from '../src/changeAudit/model';
 let mf:Miniflare,db:Awaited<ReturnType<Miniflare['getD1Database']>>;
 const id='task-fixture-001';
-const request=(action:string,method='GET',data?:unknown,params:Record<string,string>={})=>mf.dispatchFetch(`http://localhost/api/inventory/change-audit/${action}?${new URLSearchParams({hallId:'H1',taskId:id,...params})}`,{method,headers:{Origin:'http://localhost','Content-Type':'application/json'},...(data===undefined?{}:{body:JSON.stringify(data)})});
+const request=(action:string,method='GET',data?:unknown,params:Record<string,string>={})=>mf.dispatchFetch(`http://localhost/api/inventory/change-audit/${action}?${new URLSearchParams({hallId:'H1',taskId:id,...params})}`,{method,headers:{Origin:'http://localhost','X-Audit-Management-Key':'test-management-capability-123456789','X-Audit-Publication-Revision':'0','Content-Type':'application/json'},...(data===undefined?{}:{body:JSON.stringify(data)})});
 const read=async()=>await(await request('task')).json() as AuditTask;
 beforeAll(async()=>{
  const bundle=await build({entryPoints:['worker/index.ts'],bundle:true,write:false,format:'esm',platform:'browser',target:'es2022'});
- mf=new Miniflare({modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2024-10-11',d1Databases:['DB'],r2Buckets:['PHOTO_BUCKET'],bindings:{ENVIRONMENT:'test'}});
+ mf=new Miniflare({modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2024-10-11',d1Databases:['DB'],r2Buckets:['PHOTO_BUCKET'],bindings:{ENVIRONMENT:'test',CHANGE_AUDIT_MANAGEMENT_KEY:'test-management-capability-123456789'}});
  await mf.dispatchFetch('http://localhost/api/health');db=await mf.getD1Database('DB');
  for(const [version,hall,number,status] of [['old','H1',1,'PUBLISHED'],['new','H1',2,'PUBLISHED'],['future','H1',3,'PUBLISHED'],['other','H2',1,'PUBLISHED'],['staging','H1',4,'STAGING']]) await db.prepare('INSERT INTO inventory_imports(import_id,hall_id,version_number,original_filename,file_sha256,uploaded_by,status) VALUES(?,?,?,?,?,?,?)').bind(version,hall,number,'fixture.xlsx',version,'test',status).run();
  await db.prepare("UPDATE active_hall_imports SET active_import_id='new' WHERE hall_id='H1'").run();
@@ -57,7 +57,7 @@ describe('Independent D1 tasks, results, and photos',()=>{
   const task=await read(),location='103-001-1',lineId=`book:${task.plan.targets.find(t=>t.location===location)!.skus[0].sku}`;
   const query=new URLSearchParams({hallId:'H1',taskId:id,location,lineId,photoId:'photo-fixture-001'});
   const bytes=new Uint8Array([255,216,255,1,2,3]);
-  for(let repeat=0;repeat<2;repeat++) expect((await mf.dispatchFetch(`http://localhost/api/inventory/change-audit/photo?${query}`,{method:'POST',headers:{Origin:'http://localhost','Content-Type':'image/jpeg'},body:bytes})).status).toBe(repeat?200:201);
+  for(let repeat=0;repeat<2;repeat++) expect((await mf.dispatchFetch(`http://localhost/api/inventory/change-audit/photo?${query}`,{method:'POST',headers:{Origin:'http://localhost','X-Audit-Management-Key':'test-management-capability-123456789','X-Audit-Publication-Revision':'0','Content-Type':'image/jpeg'},body:bytes})).status).toBe(repeat?200:201);
   const photo=await request('photo','GET',undefined,{photoId:'photo-fixture-001'});expect(new Uint8Array(await photo.arrayBuffer())).toEqual(bytes);
   expect((await read()).photos).toMatchObject([{id:'photo-fixture-001',location,lineId}]);
   expect((await request('photo','GET',undefined,{photoId:'photo-fixture-001',hallId:'H2'})).status).toBe(404);
@@ -74,9 +74,9 @@ describe('Independent D1 tasks, results, and photos',()=>{
   const stock=(await db.prepare('SELECT * FROM inventory_stock_rows ORDER BY id').all()).results;
   await db.prepare("UPDATE active_hall_imports SET active_import_id='future' WHERE hall_id='H1'").run();
   const task=await read();expect(task.stale).toBe(true);
-  expect(await(await request('status')).json()).toEqual({stale:true});
+  expect(await(await request('status')).json()).toMatchObject({stale:true});
   expect((await request('save','POST',task.results['103-001-1'],{location:'103-001-1'})).status).toBe(409);
-  expect((await mf.dispatchFetch(`http://localhost/api/inventory/change-audit/photo?${new URLSearchParams({hallId:'H1',taskId:id,location:'103-001-1',photoId:'photo-stale-fixture'})}`,{method:'POST',headers:{Origin:'http://localhost','Content-Type':'image/jpeg'},body:new Uint8Array([1])})).status).toBe(409);
+  expect((await mf.dispatchFetch(`http://localhost/api/inventory/change-audit/photo?${new URLSearchParams({hallId:'H1',taskId:id,location:'103-001-1',photoId:'photo-stale-fixture'})}`,{method:'POST',headers:{Origin:'http://localhost','X-Audit-Management-Key':'test-management-capability-123456789','X-Audit-Publication-Revision':'0','Content-Type':'image/jpeg'},body:new Uint8Array([1])})).status).toBe(409);
   expect((await db.prepare('SELECT * FROM location_inspections').all()).results).toEqual(before);
   expect((await db.prepare('SELECT * FROM inventory_stock_rows ORDER BY id').all()).results).toEqual(stock);
   expect((await db.prepare('SELECT COUNT(*) n FROM sku_inspections').first())?.n).toBe(0);expect((await db.prepare('SELECT COUNT(*) n FROM inspection_photos').first())?.n).toBe(0);

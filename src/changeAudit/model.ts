@@ -60,6 +60,8 @@ export interface AuditPhoto {
     lineId: string;
 }
 export interface AuditTask {
+    lifecycle?: 'DRAFT' | 'PUBLISHED' | 'WITHDRAWN' | 'DELETED';
+    publicationRevision?: number;
     id: string;
     hall: string;
     createdAt: string;

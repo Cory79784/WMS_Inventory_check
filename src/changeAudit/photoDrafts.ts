@@ -1,6 +1,7 @@
 // Pending image bytes survive refresh without putting large base64 strings in localStorage.
 export interface PhotoDraft {
     id: string;
+    publicationRevision?: number;
     taskId: string;
     location: string;
     lineId: string;

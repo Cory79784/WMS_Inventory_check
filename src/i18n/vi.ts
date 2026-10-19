@@ -1,5 +1,27 @@
 import type { TranslationKey } from './zh';
 export const vi: Record<TranslationKey, string> = {
+  auditArchiveDraft: "Giữ riêng bản nháp cũ và mở nhiệm vụ hợp lệ",
+  auditArchive: "Hiện nhiệm vụ đã xóa (chỉ xuất)",
+  auditManage: "Quản lý nhiệm vụ (PC)",
+  auditManageHint: "Cấu hình CHANGE_AUDIT_MANAGEMENT_KEY trên Cloudflare (ít nhất 24 ký tự ngẫu nhiên), rồi cấp quyền cho PC. PDA không cần khóa.",
+  auditManageKey: "Khóa quản lý",
+  auditUnlock: "Cấp quyền PC",
+  auditLock: "Hủy quyền PC",
+  auditPublish: "Phát hành cho PDA",
+  auditWithdraw: "Thu hồi",
+  auditDelete: "Xóa nhiệm vụ",
+  auditDeleteConfirm: "Xóa nhiệm vụ khỏi PDA? Giữ kết quả để PC xuất bằng mã nhiệm vụ.",
+  auditUnsentChange: "Bản nháp chưa đồng bộ sẽ được giữ riêng trên máy. Tiếp tục đổi trạng thái?",
+  auditStateDRAFT: "Bản nháp",
+  auditStatePUBLISHED: "Đã phát hành",
+  auditStateWITHDRAWN: "Đã thu hồi (chỉ đọc)",
+  auditStateDELETED: "Đã xóa",
+  auditUnavailable: "Nhiệm vụ đã thu hồi, xóa hoặc phát hành lại. Bản nháp chưa gửi vẫn giữ riêng. Hãy chọn nhiệm vụ hợp lệ.",
+  auditUnavailableDraft: "Quyền đã thay đổi. Dừng sửa và đồng bộ; giữ riêng bản nháp trên máy.",
+  auditBackTasks: "Về danh sách",
+  resumeStorageError: "Không thể lưu bản nháp an toàn. Giữ trang mở đến khi lưu thành công.",
+  resumeConflict: "Bản nháp khác dữ liệu máy chủ. Đã giữ bản nháp và dừng ghi đè tự động.",
+
   auditExportSavedOnly: "Phiên bản đã cũ: chỉ xuất kết quả lưu trên máy chủ, không gồm bản nháp.",
 
   auditQtyMinus: "Giảm một",
@@ -373,6 +395,6 @@ export const vi: Record<TranslationKey, string> = {
   photoUploadPendingHint: "Ảnh đã tải lên, liên kết với lượt kiểm kê đang được tự động lưu.",
   photoUnsavedBadge: "Ảnh chờ lưu",
   exitConfirm: "Bạn có muốn thoát hệ thống kiểm kê không?",
-  exitUnsavedConfirm: "Có dữ liệu kiểm kê chưa lưu. Dữ liệu đó sẽ mất khi thoát. Bạn có muốn tiếp tục?",
+  exitUnsavedConfirm: "Dữ liệu chưa đồng bộ. Bản nháp được giữ trên máy nếu có thể; khi báo lỗi lưu trữ, hãy lưu thành công trước khi thoát. Tiếp tục?",
   exitBusy: "Đang lưu hoặc tải ảnh lên, chưa thể thoát.",
 };

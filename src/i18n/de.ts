@@ -1,5 +1,27 @@
 import type { TranslationKey } from './zh';
 export const de: Record<TranslationKey, string> = {
+  auditArchiveDraft: "Alten Entwurf separat behalten und gültige Aufgabe öffnen",
+  auditArchive: "Gelöschte Aufgaben anzeigen (nur Export)",
+  auditManage: "Aufgabenverwaltung (PC)",
+  auditManageHint: "Cloudflare: CHANGE_AUDIT_MANAGEMENT_KEY (mindestens 24 zufällige Zeichen) konfigurieren, dann diesen PC freischalten. PDA benötigt keinen Schlüssel.",
+  auditManageKey: "Verwaltungsschlüssel",
+  auditUnlock: "Diesen PC freischalten",
+  auditLock: "PC-Berechtigung beenden",
+  auditPublish: "Für PDA veröffentlichen",
+  auditWithdraw: "Veröffentlichung zurückziehen",
+  auditDelete: "Aufgabe löschen",
+  auditDeleteConfirm: "Aufgabe für PDA entfernen? Ergebnisse bleiben für den PC-Export per Aufgaben-ID erhalten.",
+  auditUnsentChange: "Nicht synchronisierte lokale Entwürfe bleiben isoliert erhalten. Aufgabenstatus trotzdem ändern?",
+  auditStateDRAFT: "Entwurf",
+  auditStatePUBLISHED: "Veröffentlicht",
+  auditStateWITHDRAWN: "Zurückgezogen (nur Lesen)",
+  auditStateDELETED: "Gelöscht",
+  auditUnavailable: "Aufgabe nicht mehr verfügbar oder neu veröffentlicht. Lokale Entwürfe bleiben getrennt erhalten. Bitte gültige Aufgabe wählen.",
+  auditUnavailableDraft: "Berechtigung geändert. Bearbeitung und Synchronisierung gestoppt; Entwürfe bleiben lokal getrennt erhalten.",
+  auditBackTasks: "Zur Aufgabenliste",
+  resumeStorageError: "Lokaler Entwurf nicht sicher gespeichert. Seite bis zur erfolgreichen Speicherung geöffnet lassen.",
+  resumeConflict: "Lokaler Entwurf und Serverstand unterscheiden sich. Entwurf bleibt erhalten; automatisches Überschreiben gestoppt.",
+
   auditExportSavedOnly: "Referenz veraltet: Export enthält nur gespeicherte Serverergebnisse, keine lokalen Entwürfe.",
 
   auditQtyMinus: "Um eins verringern",
@@ -373,6 +395,6 @@ export const de: Record<TranslationKey, string> = {
   photoUploadPendingHint: "Foto hochgeladen. Die Zuordnung zur Prüfung wird automatisch gespeichert.",
   photoUnsavedBadge: "Foto noch nicht gespeichert",
   exitConfirm: "Bestandsprüfsystem verlassen?",
-  exitUnsavedConfirm: "Es gibt ungespeicherte Prüfdaten. Beim Verlassen gehen sie verloren. Trotzdem beenden?",
+  exitUnsavedConfirm: "Daten sind noch nicht synchronisiert. Lokale Entwürfe bleiben nach Möglichkeit erhalten; bei Speicherfehlern zuerst erfolgreich speichern. Beenden?",
   exitBusy: "Speichern oder Foto-Upload läuft. Das System kann derzeit nicht verlassen werden.",
 };

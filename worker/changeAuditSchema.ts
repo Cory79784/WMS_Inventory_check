@@ -1,5 +1,8 @@
 // Namespaced, additive schema: never writes original inspection tables.
 export const CHANGE_AUDIT_SCHEMA = [
+    `CREATE TABLE IF NOT EXISTS change_audit_publications (
+ task_id TEXT PRIMARY KEY,status TEXT NOT NULL DEFAULT 'DRAFT' CHECK(status IN ('DRAFT','PUBLISHED','WITHDRAWN','DELETED')),
+ revision INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT (datetime('now','utc')))`,
     `CREATE TABLE IF NOT EXISTS change_audit_tasks (
  id TEXT PRIMARY KEY,hall_id TEXT NOT NULL,old_import_id TEXT NOT NULL,new_import_id TEXT NOT NULL,
  plan_json TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT (datetime('now','utc')),
@@ -11,5 +14,6 @@ export const CHANGE_AUDIT_SCHEMA = [
     `CREATE TABLE IF NOT EXISTS change_audit_photos (
  id TEXT PRIMARY KEY,task_id TEXT NOT NULL,location_code TEXT NOT NULL,line_id TEXT NOT NULL,
  object_key TEXT NOT NULL,FOREIGN KEY(task_id) REFERENCES change_audit_tasks(id))`,
-    `CREATE INDEX IF NOT EXISTS idx_change_photos_task ON change_audit_photos(task_id)`
+    `CREATE INDEX IF NOT EXISTS idx_change_photos_task ON change_audit_photos(task_id)`,
+    `INSERT OR IGNORE INTO change_audit_publications(task_id) SELECT id FROM change_audit_tasks`
 ];

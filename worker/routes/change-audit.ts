@@ -1,3 +1,4 @@
+import { isAuditManager, managerSession } from '../changeAuditAccess';
 import { exportChangeAudit } from './change-audit-export';
 import type { Env } from '../types';
 import { handleSnapshotComparison } from './snapshot-compare';
@@ -39,8 +40,8 @@ async function active(env: Env, hall: string): Promise<string | null> {
         active_import_id: string | null;
     }>())?.active_import_id || null;
 }
-async function taskRow(env: Env, id: string, hall: string): Promise<TaskRow> {
-    const row = await env.DB.prepare('SELECT * FROM change_audit_tasks WHERE id=? AND hall_id=?').bind(id, hall).first<TaskRow>();
+async function taskRow(env: Env, id: string, hall: string, metadataOnly=false): Promise<TaskRow> {
+    const row = await env.DB.prepare(`SELECT ${metadataOnly ? 'id,hall_id,old_import_id,new_import_id,created_at' : '*'} FROM change_audit_tasks WHERE id=? AND hall_id=?`).bind(id, hall).first<TaskRow>();
     if (!row)
         throw new ApiError(404, 'TASK_NOT_FOUND');
     return row;
@@ -48,15 +49,19 @@ async function taskRow(env: Env, id: string, hall: string): Promise<TaskRow> {
 export async function handleChangeAudit(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url), action = url.pathname.split('/').pop(), hall = url.searchParams.get('hallId');
     try {
+        if(action === 'manager') return managerSession(request, env);
+        const manager = await isAuditManager(request, env);
+        const requireManager = () => { if(!manager) throw new ApiError(403, 'MANAGEMENT_REQUIRED'); };
         need(hall && ['H1', 'H2', 'H3'].includes(hall));
         if (action === 'tasks') {
             if (request.method === 'GET') {
-                const tasks = await env.DB.prepare(`SELECT id,old_import_id AS oldId,new_import_id AS newId,created_at AS createdAt
-      FROM change_audit_tasks WHERE hall_id=? ORDER BY created_at DESC,id DESC LIMIT 100`).bind(hall).all();
+                const tasks = await env.DB.prepare(`SELECT t.id,old_import_id AS oldId,new_import_id AS newId,created_at AS createdAt,p.status,p.revision AS publicationRevision
+      FROM change_audit_tasks t JOIN change_audit_publications p ON p.task_id=t.id WHERE hall_id=? AND (p.status='PUBLISHED' OR (?=1 AND (p.status<>'DELETED' OR ?=1))) ORDER BY created_at DESC,t.id DESC LIMIT 100`).bind(hall, manager ? 1 : 0, url.searchParams.get('archived')==='1' ? 1 : 0).all();
                 return reply({ tasks: tasks.results, activeImportId: await active(env, hall) });
             }
             if (request.method !== 'POST')
                 return reply({ error: 'METHOD_NOT_ALLOWED' }, 405);
+            requireManager();
             const input = await body(request);
             need(text(input.id, 80) && /^[\w-]{8,80}$/.test(input.id));
             need(text(input.oldId, 150) && text(input.newId, 150));
@@ -70,6 +75,7 @@ export async function handleChangeAudit(request: Request, env: Env): Promise<Res
             const existing = await env.DB.prepare('SELECT * FROM change_audit_tasks WHERE id=?').bind(input.id).first<TaskRow>();
             if (existing) {
                 need(existing.hall_id === hall && existing.old_import_id === input.oldId && existing.new_import_id === input.newId && JSON.stringify(JSON.parse(existing.plan_json).config) === JSON.stringify(config));
+                await env.DB.prepare('INSERT OR IGNORE INTO change_audit_publications(task_id) VALUES(?)').bind(existing.id).run();
                 return reply({ id: existing.id });
             }
             if (await active(env, hall) !== input.newId)
@@ -106,16 +112,39 @@ export async function handleChangeAudit(request: Request, env: Env): Promise<Res
                 const raced = await taskRow(env, input.id, hall);
                 need(raced.old_import_id === input.oldId && raced.new_import_id === input.newId && JSON.stringify(JSON.parse(raced.plan_json).config) === JSON.stringify(config));
             }
-            return reply({ id: input.id, task: inserted.meta.changes ? { id: input.id, hall, createdAt, plan, results: {}, photos: [], stale: false } : undefined }, 201);
+            await env.DB.prepare('INSERT OR IGNORE INTO change_audit_publications(task_id) VALUES(?)').bind(input.id).run();
+            return reply({ id: input.id, task: inserted.meta.changes ? { id: input.id, hall, createdAt, plan, results: {}, photos: [], stale: false, lifecycle: 'DRAFT', publicationRevision: 0 } : undefined }, 201);
         }
         const id = url.searchParams.get('taskId');
         need(id && text(id, 80));
-        const row = await taskRow(env, id, hall);
-        if (action === 'status' && request.method === 'GET')
-            return reply({ stale: (await active(env, hall)) !== row.new_import_id });
+        const row = await taskRow(env, id, hall, ['status','lifecycle','progress'].includes(action || ''));
+        if(['status','progress'].includes(action || '') && request.method!=='GET' || action==='lifecycle' && request.method!=='POST') return reply({error:'METHOD_NOT_ALLOWED'},405);
+        const publication = await env.DB.prepare('SELECT status,revision FROM change_audit_publications WHERE task_id=?').bind(id).first<{status:string;revision:number}>();
+        const state = publication || {status:'DRAFT',revision:0};
+        if(action==='lifecycle' && request.method==='POST') {
+            requireManager();
+            const input=await body(request);
+            need(['PUBLISHED','WITHDRAWN','DELETED'].includes(input.status) && Number.isInteger(input.revision));
+            if(state.status==='DELETED') throw new ApiError(410,'TASK_UNAVAILABLE');
+            if(input.status==='PUBLISHED' && await active(env,hall)!==row.new_import_id) throw new ApiError(409,'STALE_VERSION');
+            const changed=await env.DB.prepare(`UPDATE change_audit_publications SET status=?,revision=revision+1,updated_at=? WHERE task_id=? AND revision=? AND status<> 'DELETED' AND (?<>'PUBLISHED' OR EXISTS(SELECT 1 FROM active_hall_imports WHERE hall_id=? AND active_import_id=?))`).bind(input.status,new Date().toISOString(),id,input.revision,input.status,hall,row.new_import_id).run();
+            if(!changed.meta.changes) throw new ApiError(409,'PUBLICATION_CONFLICT');
+            return reply({lifecycle:input.status,publicationRevision:input.revision+1});
+        }
+        if(state.status==='DELETED' && !(manager && (['export','task','photo'].includes(action || '') && request.method==='GET'))) throw new ApiError(410,'TASK_UNAVAILABLE');
+        if(!manager && state.status!=='PUBLISHED') throw new ApiError(410,'TASK_UNAVAILABLE');
+        if (action === 'status' && request.method === 'GET') {
+            const counts=await env.DB.prepare('SELECT COUNT(*) AS n,COALESCE(SUM(revision),0) AS rev FROM change_audit_results WHERE task_id=?').bind(id).first<{n:number;rev:number}>();
+            const photos=await env.DB.prepare('SELECT COUNT(*) AS n FROM change_audit_photos WHERE task_id=?').bind(id).first<{n:number}>();
+            return reply({ stale: (await active(env, hall)) !== row.new_import_id, lifecycle:state.status,publicationRevision:state.revision,resultStamp:`${counts?.n}:${counts?.rev}:${photos?.n}` });
+        }
+        if(action==='progress' && request.method==='GET') {
+            const results=await env.DB.prepare('SELECT location_code,result_json,revision,saved_at FROM change_audit_results WHERE task_id=?').bind(id).all<{location_code:string;result_json:string;revision:number;saved_at:string}>();
+            const photos=await env.DB.prepare('SELECT id,location_code AS location,line_id AS lineId FROM change_audit_photos WHERE task_id=?').bind(id).all();
+            return reply({results:Object.fromEntries(results.results.map(r=>[r.location_code,{...JSON.parse(r.result_json),revision:r.revision,savedAt:r.saved_at}])),photos:photos.results});
+        }
         const plan = JSON.parse(row.plan_json) as AuditPlan;
-        if (action === 'export' && request.method === 'GET')
-            return exportChangeAudit(request, env, row, plan);
+        if (action === 'export' && request.method === 'GET') { requireManager(); return exportChangeAudit(request, env, row, plan); }
         if (action === 'task' && request.method === 'GET') {
             const results = await env.DB.prepare('SELECT location_code,result_json,revision,saved_at FROM change_audit_results WHERE task_id=?').bind(id).all<{
                 location_code: string;
@@ -124,7 +153,7 @@ export async function handleChangeAudit(request: Request, env: Env): Promise<Res
                 saved_at: string;
             }>();
             const photos = await env.DB.prepare('SELECT id,location_code AS location,line_id AS lineId FROM change_audit_photos WHERE task_id=?').bind(id).all();
-            return reply({ id, hall, createdAt: row.created_at, plan, stale: (await active(env, hall)) !== row.new_import_id,
+            return reply({ id, hall, lifecycle:state.status,publicationRevision:state.revision, createdAt: row.created_at, plan, stale: (await active(env, hall)) !== row.new_import_id,
                 results: Object.fromEntries(results.results.map(r => [r.location_code, { ...JSON.parse(r.result_json), revision: r.revision, savedAt: r.saved_at }])), photos: photos.results });
         }
         if (action === 'photo' && request.method === 'GET') {
@@ -140,6 +169,9 @@ export async function handleChangeAudit(request: Request, env: Env): Promise<Res
         }
         if (request.method !== 'POST')
             return reply({ error: 'METHOD_NOT_ALLOWED' }, 405);
+        if(state.status==='WITHDRAWN' || state.status==='DELETED') throw new ApiError(410,'TASK_UNAVAILABLE');
+        const publicationRevision=Number(request.headers.get('X-Audit-Publication-Revision'));
+        if(!request.headers.has('X-Audit-Publication-Revision') || publicationRevision!==state.revision) throw new ApiError(409,'PUBLICATION_CONFLICT');
         if (await active(env, hall) !== row.new_import_id)
             throw new ApiError(409, 'STALE_VERSION');
         const location = url.searchParams.get('location'), target = plan.targets.find(t => t.location === location);
@@ -200,13 +232,15 @@ export async function handleChangeAudit(request: Request, env: Env): Promise<Res
             const json = JSON.stringify(result), savedAt = new Date().toISOString();
             const written = input.revision === 0
                 ? await env.DB.prepare(`INSERT OR IGNORE INTO change_audit_results(task_id,location_code,result_json,revision,saved_at)
-       SELECT ?,?,?,1,? WHERE EXISTS(SELECT 1 FROM active_hall_imports WHERE hall_id=? AND active_import_id=?)`)
-                    .bind(id, location, json, savedAt, hall, row.new_import_id).run()
+       SELECT ?,?,?,1,? WHERE EXISTS(SELECT 1 FROM active_hall_imports WHERE hall_id=? AND active_import_id=?) AND EXISTS(SELECT 1 FROM change_audit_publications WHERE task_id=? AND revision=? AND status=?)`)
+                    .bind(id, location, json, savedAt, hall, row.new_import_id, id, state.revision, state.status).run()
                 : await env.DB.prepare(`UPDATE change_audit_results SET result_json=?,revision=revision+1,saved_at=?
-       WHERE task_id=? AND location_code=? AND revision=? AND EXISTS(SELECT 1 FROM active_hall_imports WHERE hall_id=? AND active_import_id=?)`)
-                    .bind(json, savedAt, id, location, input.revision, hall, row.new_import_id).run();
+       WHERE task_id=? AND location_code=? AND revision=? AND EXISTS(SELECT 1 FROM active_hall_imports WHERE hall_id=? AND active_import_id=?) AND EXISTS(SELECT 1 FROM change_audit_publications WHERE task_id=? AND revision=? AND status=?)`)
+                    .bind(json, savedAt, id, location, input.revision, hall, row.new_import_id, id, state.revision, state.status).run();
             const changed = written.meta.changes;
             if (!changed) {
+                const latest=await env.DB.prepare('SELECT status,revision FROM change_audit_publications WHERE task_id=?').bind(id).first<{status:string;revision:number}>();
+                if(latest?.status!==state.status || latest?.revision!==state.revision) throw new ApiError(409,'PUBLICATION_CONFLICT');
                 if (await active(env, hall) !== row.new_import_id)
                     throw new ApiError(409, 'STALE_VERSION');
                 const current = await env.DB.prepare('SELECT result_json,revision,saved_at FROM change_audit_results WHERE task_id=? AND location_code=?').bind(id, location).first<{
@@ -249,8 +283,10 @@ export async function handleChangeAudit(request: Request, env: Env): Promise<Res
             const key = `change-audit/${hall}/${id}/${photoId}`;
             await env.PHOTO_BUCKET.put(key, bytes, { httpMetadata: { contentType: type } });
             const inserted = await env.DB.prepare(`INSERT OR IGNORE INTO change_audit_photos(id,task_id,location_code,line_id,object_key)
-    SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM active_hall_imports WHERE hall_id=? AND active_import_id=?)`).bind(photoId, id, location, lineId, key, hall, row.new_import_id).run();
+    SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM active_hall_imports WHERE hall_id=? AND active_import_id=?) AND EXISTS(SELECT 1 FROM change_audit_publications WHERE task_id=? AND revision=? AND status=?)`).bind(photoId, id, location, lineId, key, hall, row.new_import_id, id, state.revision, state.status).run();
             if (!inserted.meta.changes) {
+                const latest=await env.DB.prepare('SELECT status,revision FROM change_audit_publications WHERE task_id=?').bind(id).first<{status:string;revision:number}>();
+                if(latest?.status!==state.status || latest?.revision!==state.revision) { await env.PHOTO_BUCKET.delete(key); throw new ApiError(409,'PUBLICATION_CONFLICT'); }
                 if (await active(env, hall) !== row.new_import_id) {
                     const retained = await env.DB.prepare('SELECT id FROM change_audit_photos WHERE id=? AND task_id=?').bind(photoId, id).first();
                     if (!retained)

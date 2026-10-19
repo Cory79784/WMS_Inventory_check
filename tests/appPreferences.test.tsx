@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { JSDOM } = require('jsdom');
 vi.mock('../src/pages/LocationInspectionPage', () => ({
-  hasUnsavedInspectionDrafts: () => false,
+  hasUnsavedInspectionDrafts: () => false, flushInspectionDrafts:()=>{},
   LocationInspectionPage: ({ currentHall, allowFileTransfer }: any) => <div data-testid="inspection">{currentHall}:{String(allowFileTransfer)}</div>,
 }));
 vi.mock('../src/pages/WMSImportPage', () => ({ WMSImportPage: () => <div>import-page</div> }));
@@ -21,7 +21,7 @@ beforeAll(async () => {
   App = (await import('../src/App')).App;
 });
 beforeEach(async () => {
-  window.sessionStorage.clear();
+  window.sessionStorage.clear(); window.localStorage.clear();
   Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Desktop Chrome Windows' });
   Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 0 });
   container = document.createElement('div'); document.body.appendChild(container);
@@ -35,14 +35,14 @@ async function remount() {
 function button(text: string) { return Array.from(container.querySelectorAll('button')).find(b => b.textContent?.trim() === text); }
 async function click(text: string) { await act(async () => button(text)!.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))); }
 describe('Tab hall selection and handheld presentation', () => {
-  it('retains H2 after a refresh/remount, with a new tab session defaulting to H1', async () => {
+  it('retains H2 after a refresh/remount, with a browser reopen keeping H3', async () => {
     await render(); expect(container.querySelector('[data-testid="inspection"]')?.textContent).toBe('H1:true');
     await click('H2');
     await remount(); expect(container.querySelector('[data-testid="inspection"]')?.textContent).toBe('H2:true');
     await click('H3');
     await remount(); expect(container.querySelector('[data-testid="inspection"]')?.textContent).toBe('H3:true');
     window.sessionStorage.clear(); // a newly opened tab has a fresh session
-    await remount(); expect(container.querySelector('[data-testid="inspection"]')?.textContent).toBe('H1:true');
+    await remount(); expect(container.querySelector('[data-testid="inspection"]')?.textContent).toBe('H3:true');
   });
   it.each([
     ['Android PDA Chrome', 0], ['iPhone Mobile', 0], ['iPad', 0], ['Macintosh Safari', 5],
@@ -50,7 +50,7 @@ describe('Tab hall selection and handheld presentation', () => {
     Object.defineProperty(navigator, 'userAgent', { configurable: true, value: userAgent });
     Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: maxTouchPoints });
     await render();
-    expect(button('WMS 导入')).toBeUndefined(); expect(button('导出')).toBeUndefined(); expect(button('库存变动核查')).toBeUndefined();
+    expect(button('WMS 导入')).toBeUndefined(); expect(button('导出')).toBeUndefined(); expect(button('库存变动核查')).toBeDefined();
     expect(container.querySelector('[data-testid="inspection"]')?.textContent).toBe('H1:false');
     await click('H2'); await remount();
     expect(container.querySelector('[data-testid="inspection"]')?.textContent).toBe('H2:false');
@@ -63,10 +63,17 @@ describe('Tab hall selection and handheld presentation', () => {
     await click('库存变动核查'); expect(container.textContent).toContain('change-audit-page');
     await remount(); expect(container.textContent).toContain('change-audit-page');
   });
+  it('keeps a separate remembered tab for each hall and restores it after browser reopen',async()=> {
+    await render();await click('H2');await click('库存变动核查');
+    await click('H1');expect(container.querySelector('[data-testid="inspection"]')?.textContent).toBe('H1:true');
+    await click('H2');expect(container.textContent).toContain('change-audit-page');
+    window.sessionStorage.clear();await remount();expect(container.textContent).toContain('change-audit-page');expect(window.localStorage.getItem('wms-active-hall')).toBe('H2');
+    await click('库位核查');window.sessionStorage.clear();await remount();expect(container.querySelector('[data-testid="inspection"]')?.textContent).toBe('H2:true');
+  });
   it('validates stored hall IDs and clears the selection on explicit exit', async () => {
     const { readSessionHall, clearSessionHall } = await import('../src/utils/sessionHall');
-    window.sessionStorage.setItem('wms-active-hall', 'invalid'); expect(readSessionHall()).toBe('H1');
-    window.sessionStorage.setItem('wms-active-hall', 'H2'); clearSessionHall(); expect(readSessionHall()).toBe('H1');
+    window.localStorage.setItem('wms-active-hall', 'invalid'); expect(readSessionHall()).toBe('H1');
+    window.localStorage.setItem('wms-active-hall', 'H2'); clearSessionHall(); expect(readSessionHall()).toBe('H1');
     const get = vi.spyOn(window.Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied'); });
     try { expect(readSessionHall()).toBe('H1'); } finally { get.mockRestore(); }
   });

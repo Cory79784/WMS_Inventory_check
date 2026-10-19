@@ -65,10 +65,10 @@ export const Header: React.FC<HeaderProps> = ({
             <ClipboardCheck className="w-3.5 h-3.5" />
             {t('inspect')}
           </button>
-          {allowFileTransfer && <>
           <button type="button" onClick={() => onSelectView('changes')} className={`px-2.5 py-1.5 rounded-md font-medium flex items-center gap-1 ${activeView==='changes'?'bg-blue-600 text-white':'text-slate-300 hover:text-white'}`}>
             <Route className="w-3.5 h-3.5" />{t('auditMenu')}
           </button>
+          {allowFileTransfer && <>
           <button
             type="button"
             onClick={() => onSelectView('import')}

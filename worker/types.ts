@@ -6,6 +6,7 @@ export interface Env {
 
   // Environment variables
   ENVIRONMENT: string;
+  CHANGE_AUDIT_MANAGEMENT_KEY?: string;
   AUTH_MODE?: string;
   AUTH_CREDENTIALS?: string;
 }
