@@ -60,3 +60,26 @@ it('previews a photo before upload, retains failures, and retries using the same
  api.uploadPhoto.mockResolvedValueOnce({id:photo.id,location:photo.location,lineId:photo.lineId});await s.addPhoto(photo);
  expect(api.uploadPhoto.mock.calls[1][4]).toBe(photo.id);expect(s.task.photos).toHaveLength(1);expect(s.uploads[0].status).toBe('saved');expect(revoke).toHaveBeenCalledWith('blob:preview');
 });
+it('quarantines persisted drafts when a task is republished and never posts them using the new revision',async()=>{
+ const old={...task(),publicationRevision:1,lifecycle:'PUBLISHED' as const};
+ const s=new AuditSession(old);s.edit('103-001-1',{...s.result('103-001-1'),notes:'offline from publication 1'});
+ vi.clearAllTimers();
+ const next=new AuditSession({...task(),publicationRevision:3,lifecycle:'PUBLISHED'});
+ expect(next.unavailable).toBe(true);expect(next.result('103-001-1').notes).toBe('offline from publication 1');
+ await next.flush('103-001-1');expect(api.saveResult).not.toHaveBeenCalled();
+});
+it('preserves local drafts after task deletion and stops edits/uploads and retries',async()=>{
+ const s=new AuditSession({...task(),publicationRevision:1,lifecycle:'PUBLISHED'});
+ s.edit('103-001-1',{...s.result('103-001-1'),notes:'preserve'});vi.clearAllTimers();
+ api.taskStatus.mockRejectedValueOnce(new AuditError('TASK_UNAVAILABLE',410));await s.checkVersion(true);
+ expect(s.unavailable).toBe(true);expect(s.dirty).toBe(true);
+ s.edit('103-001-1',{...s.result('103-001-1'),notes:'must not change'});await s.flush('103-001-1');
+ expect(s.result('103-001-1').notes).toBe('preserve');expect(api.saveResult).not.toHaveBeenCalled();
+});
+it('archives quarantined quantities before allowing a fresh publication to open',async()=>{
+ const s=new AuditSession({...task(),publicationRevision:1,lifecycle:'PUBLISHED'});
+ s.edit('103-001-1',{...s.result('103-001-1'),notes:'retain evidence'});vi.clearAllTimers();s.unavailable=true;
+ await s.archiveDrafts();expect(s.dirty).toBe(false);expect(storage.get(s.key)).toBeUndefined();
+ const archived=[...storage.entries()].find(([key])=>key.startsWith('wms-change-audit-quarantine:H1:task-session:'));
+ expect(archived?.[1]).toContain('retain evidence');expect(archived?.[1]).toContain('"publicationRevision":1');
+});

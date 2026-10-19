@@ -1,28 +1,35 @@
-import React, { useEffect, useState, lazy, Suspense } from 'react';
+import React, { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import { registerLanguageSafety, languageSafety } from './i18n/safety';
 import { confirmPdaExit } from './utils/exitPrompt';
 import { consumeApprovedLanguageReload } from './i18n/switch';
 import { readLanguage, t } from './i18n';
 import { Header } from './components/Header';
-import { LocationInspectionPage, hasUnsavedInspectionDrafts } from './pages/LocationInspectionPage';
+import { LocationInspectionPage, hasUnsavedInspectionDrafts, flushInspectionDrafts } from './pages/LocationInspectionPage';
 import { DeviceTestPage } from './pages/DeviceTestPage';
 import { ArchitecturePage } from './pages/ArchitecturePage';
 import { WMSImportPage } from './pages/WMSImportPage';
 import { InspectionExportPage } from './pages/InspectionExportPage';
 import { HallId } from './types';
-import { readSessionHall, rememberSessionHall, clearSessionHall } from './utils/sessionHall';
-import { hasChangeAuditDrafts } from './changeAudit/session';
+import { readSessionHall, rememberSessionHall } from './utils/sessionHall';
+import { hasChangeAuditDrafts, flushChangeAuditDrafts } from './changeAudit/session';
 import { isHandheldDevice } from './utils/device';
 
 const ChangeAuditPage = lazy(() => import('./pages/ChangeAuditPage').then(module => ({default: module.ChangeAuditPage})));
 
+type View = 'inspect' | 'test' | 'import' | 'export' | 'arch' | 'changes';
+function readView(hall:HallId,files:boolean):View {
+  try { const value=window.localStorage.getItem(`wms-view:${hall}`); if(['inspect','changes','test','arch',...(files?['import','export']:[])].includes(value || '')) return value as View; }catch{} return 'inspect';
+}
 export const App: React.FC = () => {
+  const [storageProblem,setStorageProblem]=useState(()=>{try{window.localStorage.setItem('wms-storage-probe','1');window.localStorage.removeItem('wms-storage-probe');return false;}catch{return true;}});
+  const storageProblemRef=useRef(storageProblem);storageProblemRef.current=storageProblem;
+  useEffect(()=>{const failed=()=>setStorageProblem(true);window.addEventListener('wms-draft-storage-error',failed);return ()=>window.removeEventListener('wms-draft-storage-error',failed);},[]);
   useEffect(() => {
     document.documentElement.lang = readLanguage();
     document.title = t('siteTitle');
     document.documentElement.dir = 'ltr'; // Never mirror PDA controls.
     return registerLanguageSafety('cached-inspection-drafts', {
-      dirty: () => hasUnsavedInspectionDrafts() || hasChangeAuditDrafts(),
+      dirty: () => hasUnsavedInspectionDrafts() || hasChangeAuditDrafts() || storageProblemRef.current,
       busy: () => false,
     });
   }, []);
@@ -41,17 +48,24 @@ export const App: React.FC = () => {
         return;
       }
       exiting = true;
-      clearSessionHall();
+      flushInspectionDrafts();void flushChangeAuditDrafts();
       window.history.back();
     };
+    const flush=()=>{flushInspectionDrafts();void flushChangeAuditDrafts();};
+    const visibility=()=>{if(document.visibilityState==='hidden') flush();};
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (exiting || consumeApprovedLanguageReload() || !languageSafety().dirty) return;
+      flush();
+      if (exiting || consumeApprovedLanguageReload() || (!languageSafety().dirty && !storageProblemRef.current)) return;
       event.preventDefault();
       event.returnValue = '';
     };
+    document.addEventListener('visibilitychange',visibility);
+    window.addEventListener('pagehide',flush);
     window.addEventListener('popstate', onPopState);
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => {
+      document.removeEventListener('visibilitychange',visibility);
+      window.removeEventListener('pagehide',flush);
       window.removeEventListener('popstate', onPopState);
       window.removeEventListener('beforeunload', onBeforeUnload);
     };
@@ -60,10 +74,13 @@ export const App: React.FC = () => {
   const [currentHall, setCurrentHall] = useState<HallId>(readSessionHall);
   const allowFileTransfer = !isHandheldDevice();
   const selectHall = (hall: HallId) => {
+    flushInspectionDrafts();void flushChangeAuditDrafts();
     rememberSessionHall(hall);
     setCurrentHall(hall);
   };
-  const [activeView, setActiveView] = useState<'inspect' | 'test' | 'import' | 'export' | 'arch' | 'changes'>(() => { try { return allowFileTransfer && window.sessionStorage.getItem('wms-change-audit-view')==='open' ? 'changes' : 'inspect'; } catch { return 'inspect'; } });
+  const [activeView, setActiveView] = useState<'inspect' | 'test' | 'import' | 'export' | 'arch' | 'changes'> (() => readView(currentHall,allowFileTransfer));
+  useEffect(()=>{setActiveView(readView(currentHall,allowFileTransfer));},[currentHall]);
+  useEffect(()=>{try {window.localStorage.setItem(`wms-view:${currentHall}`,activeView);}catch{setStorageProblem(true);} if(activeView==='changes') setAuditOpened(true);},[activeView]);
 
   const [auditOpened, setAuditOpened] = useState(activeView==='changes');
   return (
@@ -74,17 +91,19 @@ export const App: React.FC = () => {
         activeView={activeView}
         allowFileTransfer={allowFileTransfer}
         onSelectView={view => {
-          if (allowFileTransfer || (view !== 'import' && view !== 'export' && view !== 'changes')) {
+          flushInspectionDrafts();void flushChangeAuditDrafts();
+          if (allowFileTransfer || (view !== 'import' && view !== 'export')) {
             if(view==='changes') setAuditOpened(true);
-            try { window.sessionStorage.setItem('wms-change-audit-view',view==='changes'?'open':''); } catch { /* Preference only. */ }
+            try { window.localStorage.setItem(`wms-view:${currentHall}`,view); } catch { setStorageProblem(true); }
             setActiveView(view);
           }
         }}
       />
 
+      {storageProblem && <p role="alert" className="bg-red-50 text-red-700 p-3 text-sm">{t('resumeStorageError')}</p>}
       <main className="flex-1 pb-4">
         {activeView === 'inspect' && (
-          <LocationInspectionPage
+          <LocationInspectionPage key={currentHall}
             currentHall={currentHall}
             allowFileTransfer={allowFileTransfer}
             onOpenImport={() => { if (allowFileTransfer) setActiveView('import'); }}
@@ -93,7 +112,7 @@ export const App: React.FC = () => {
         )}
         {allowFileTransfer && activeView === 'import' && <WMSImportPage currentHall={currentHall} />}
         {allowFileTransfer && activeView === 'export' && <InspectionExportPage currentHall={currentHall} />}
-        {allowFileTransfer && auditOpened && <div hidden={activeView!=='changes'}><Suspense fallback={<p className="p-4">{t('compareLoading')}</p>}><ChangeAuditPage key={currentHall} currentHall={currentHall} active={activeView==='changes'}/></Suspense></div>}
+        {auditOpened && <div hidden={activeView!=='changes'}><Suspense fallback={<p className="p-4">{t('compareLoading')}</p>}><ChangeAuditPage key={currentHall} currentHall={currentHall} active={activeView==='changes'}/></Suspense></div>}
         {activeView === 'test' && <DeviceTestPage />}
         {activeView === 'arch' && <ArchitecturePage />}
       </main>

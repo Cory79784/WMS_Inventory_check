@@ -24,6 +24,7 @@ beforeAll(async () => {
   Page = (await import('../src/pages/LocationInspectionPage')).LocationInspectionPage;
 });
 beforeEach(async () => {
+  window.localStorage.clear();
   browserErrors.length = 0;
   vi.clearAllMocks();
   api.fetchActiveVersion.mockResolvedValue({ hasActiveVersion: true, activeVersion: { version_number: 1 } });
@@ -770,4 +771,14 @@ describe('PDA inspection UI interactions', () => {
     expect(scanInput().value).toBe('128-029-1');
   });
 
+});
+it('recovers a persisted original inspection draft independently of audit tasks and retries autosave',async()=>{
+ const code='130-031-1',data=await api.fetchLocationAudit('H1',code);
+ const skus=data.skus.map((s:any,index:number)=>({...s,lineId:`book:${s.sku}:${index}`,actualQty:8,differenceQty:-2,discrepancyType:'SHORTAGE',notes:'offline original'}));
+ window.localStorage.setItem(`wms-original-draft:H1:${code}:v1`,JSON.stringify({data,skus,photos:[],notes:'retain original',empty:false,uploads:[]}));
+ await query(code);
+ expect(container.textContent).toContain('130-031-1');
+ await act(async()=>{await new Promise(resolve=>setTimeout(resolve,900));});
+ expect(api.saveLocationInspection).toHaveBeenCalledWith(expect.objectContaining({hallId:'H1',referenceImportId:'v1',locationCode:code,notes:'retain original',skus:[expect.objectContaining({actualQty:8})]}));
+ expect(window.localStorage.getItem('wms-original-location:H1')).toBe(code);
 });

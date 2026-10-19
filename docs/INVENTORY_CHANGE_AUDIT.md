@@ -81,3 +81,8 @@ R2 前缀为 `change-audit/{hall}/{taskId}/{photoId}`。不写入原 `location_i
 任务和原核查分别查询、分别适配，Excel 复用原 `buildInspectionWorkbook` 的列顺序、颜色、90pt 照片行高、同一明细多图排列及双角点同一行的锚点、原图去重。独立元数据页标明任务 ID、创建时间、参考版本、完成/未完成数量。中/英/德标签为本地字典，原商品名称/人工备注/编码不翻译。JPEG/PNG 原图不转换；任务 WebP 照片导出时在浏览器转 PNG 嵌入 Excel，R2 原文件保持不变，原核查导出行为不变。
 
 追加验证覆盖同一天同版本的任务 A/B 与原核查结果分离，未完成排除，过期任务导出，明细/库位证据隔离，退货、无 SKU 照片校验，图片归属调整和全相符隐藏关联，三种语言真实 XLSX 回读及图片行列锚点。原页面交互回归继续通过。真实 PC 的图片解码、WebP 转换与 Excel 筛选排序仍需验收。
+
+
+## PC 发布与 PDA 执行
+
+后续发布生命周期、管理 Secret、本机恢复及验收边界详见 [CHANGE_AUDIT_PUBLICATION_AND_RESUME.md](CHANGE_AUDIT_PUBLICATION_AND_RESUME.md)。其发布范围替代本文先前的“仅 PC 上线”描述。
