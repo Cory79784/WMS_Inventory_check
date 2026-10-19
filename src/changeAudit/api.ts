@@ -49,3 +49,13 @@ export const lockManager = () => call('manager', {}, {method:'DELETE'});
 export const changeLifecycle = (hallId:string, taskId:string, status:string, revision:number) => call<{lifecycle:AuditTask['lifecycle'];publicationRevision:number}>('lifecycle',{hallId,taskId},{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status,revision})});
 
 export const loadProgress = (hallId:string,taskId:string) => call<Pick<AuditTask,'results'|'photos'>>('progress',{hallId,taskId});
+
+// Read-only original inspection context. Never adapted into task result payloads.
+export interface InspectionReference {
+    referenceImportId:string;
+    versionNumber:number;
+    rows:Array<{id:string;sku:string;barcode:string;systemQty:number;actualQty:number;differenceQty:number;
+        discrepancyType:'NORMAL'|'SHORTAGE'|'SURPLUS'|'UNEXPECTED_SKU'|'NO_SKU_SURPLUS'|null;
+        notes:string;isReturn:boolean;returnCode:string}>;
+}
+export const loadInspectionReference=(hallId:string,taskId:string,location:string,signal?:AbortSignal)=>call<InspectionReference>('inspection-reference',{hallId,taskId,location},{signal});

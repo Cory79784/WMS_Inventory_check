@@ -1,7 +1,9 @@
+import type { ReactNode } from 'react';
+import { InspectionDiscrepancyBadge } from './InspectionDiscrepancyBadge';
 import { Check, AlertTriangle } from 'lucide-react';
 import { t } from '../i18n';
 import type { LocationSkuItem } from '../types';
-export function InspectionSkuCard({ item, idx, handleSetSkuNormal, handleOpenShortage, bookLabel, emphasizeBook = false, unknownAllocation = false }: {
+export function InspectionSkuCard({ item, idx, handleSetSkuNormal, handleOpenShortage, bookLabel, emphasizeBook = false, unknownAllocation = false, reference }: {
     item: LocationSkuItem;
     idx: number;
     handleSetSkuNormal: (index: number) => void;
@@ -9,6 +11,7 @@ export function InspectionSkuCard({ item, idx, handleSetSkuNormal, handleOpenSho
     bookLabel?: string;
     emphasizeBook?: boolean;
     unknownAllocation?: boolean;
+    reference?: ReactNode;
 }) {
     const isNormal = item.discrepancyType === 'NORMAL';
     const isShortage = item.discrepancyType === 'SHORTAGE';
@@ -42,18 +45,7 @@ export function InspectionSkuCard({ item, idx, handleSetSkuNormal, handleOpenSho
 
                     {/* Discrepancy Status Tag */}
                     <div>
-                      {isNormal && (<span className="inline-flex items-center gap-0.5 bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
-                          <Check className="w-3 h-3"/> {t('match')}
-                        </span>)}
-                      {isShortage && (<span className="inline-flex items-center gap-0.5 bg-red-100 text-red-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
-                          {t('shortage')} {Math.abs(item.differenceQty || 0)}
-                        </span>)}
-                      {isSurplus && (<span className="inline-flex items-center gap-0.5 bg-amber-100 text-amber-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
-                          {t('surplus')} +{item.differenceQty || 0}
-                        </span>)}
-                      {!item.discrepancyType && (<span className="bg-slate-100 text-slate-500 text-[11px] px-2 py-0.5 rounded-full font-medium">
-                          {t('unchecked')}
-                        </span>)}
+                      <InspectionDiscrepancyBadge item={item}/>
                     </div>
                   </div>
 
@@ -61,6 +53,7 @@ export function InspectionSkuCard({ item, idx, handleSetSkuNormal, handleOpenSho
                       {t('returnShort')}{item.returnCode ? ` · ${t('returnedCodeLabel')} ${item.returnCode}` : ''}
                     </p>)}
 
+                  {reference}
                   {/* Stock Quantities Grid (6 Pillars) */}
                   <div dir="ltr" className="grid grid-cols-6 gap-1 mt-2.5 pt-2 border-t border-slate-100 text-center">
                     <div className="bg-slate-50 rounded p-1">

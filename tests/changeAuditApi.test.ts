@@ -69,8 +69,24 @@ describe('Independent D1 tasks, results, and photos',()=>{
   expect((await request('tasks','POST',{id:'task-invalid-pairs',oldId:'old',newId:'new',config:{...defaultRoute,pairs:[[103,104],[104,105]]}})).status).toBe(400);
   expect((await request('save','POST',{}, {location:'999-001-1'})).status).toBe(400);
  });
+ it('reads original references in one location query for the exact hall and new snapshot, without copying task results',async()=>{
+  for(const [inspection,hall,version,location] of [['old-reference','H1','old','103-001-1'],['foreign-reference','H2','new','103-001-1'],['neighbor-reference','H1','new','104-001-1']]) await db.prepare("INSERT INTO location_inspections(inspection_id,hall_id,location_code,reference_import_id,status) VALUES(?,?,?,?,'VERIFIED')").bind(inspection,hall,location,version).run();
+  for(const [line,inspection,sku,book,actual,diff,type] of [
+   ['ref-short','original','12345678',3,1,-2,'SHORTAGE'],['ref-extra','original','12345678',0,2,2,'SURPLUS'],['ref-normal','original','KEEP',10,10,0,'NORMAL'],
+   ['ref-old','old-reference','12345678',2,99,97,'SURPLUS'],['ref-foreign','foreign-reference','12345678',3,98,95,'SURPLUS'],['ref-neighbor','neighbor-reference','12345678',3,97,94,'SURPLUS']
+  ]) await db.prepare('INSERT INTO sku_inspections(id,inspection_id,sku,system_qty,actual_qty,difference_qty,discrepancy_type,notes) VALUES(?,?,?,?,?,?,?,?)').bind(line,inspection,sku,book,actual,diff,type,'原核查备注').run();
+  const before=await read();
+  const response=await request('inspection-reference','GET',undefined,{location:'103-001-1'});expect(response.status).toBe(200);
+  const reference=await response.json() as any;
+  expect(reference.referenceImportId).toBe('new');expect(reference.versionNumber).toBe(2);
+  expect(reference.rows).toHaveLength(3);expect(reference.rows).toEqual(expect.arrayContaining([expect.objectContaining({id:'ref-short',discrepancyType:'SHORTAGE',differenceQty:-2}),expect.objectContaining({id:'ref-extra',discrepancyType:'SURPLUS',differenceQty:2})]));
+  expect((await request('inspection-reference','GET',undefined,{location:'999-001-1'})).status).toBe(400);
+  expect((await request('inspection-reference','GET',undefined,{location:'103-001-1',hallId:'H2'})).status).toBe(404);
+  expect((await read()).results).toEqual(before.results);
+ });
  it('detects a newly published version, blocks writes/photos, and leaves original data untouched',async()=>{
   const before=(await db.prepare('SELECT * FROM location_inspections').all()).results;
+  const beforeSkus=(await db.prepare('SELECT * FROM sku_inspections ORDER BY id').all()).results;
   const stock=(await db.prepare('SELECT * FROM inventory_stock_rows ORDER BY id').all()).results;
   await db.prepare("UPDATE active_hall_imports SET active_import_id='future' WHERE hall_id='H1'").run();
   const task=await read();expect(task.stale).toBe(true);
@@ -79,6 +95,6 @@ describe('Independent D1 tasks, results, and photos',()=>{
   expect((await mf.dispatchFetch(`http://localhost/api/inventory/change-audit/photo?${new URLSearchParams({hallId:'H1',taskId:id,location:'103-001-1',photoId:'photo-stale-fixture'})}`,{method:'POST',headers:{Origin:'http://localhost','X-Audit-Management-Key':'test-management-capability-123456789','X-Audit-Publication-Revision':'0','Content-Type':'image/jpeg'},body:new Uint8Array([1])})).status).toBe(409);
   expect((await db.prepare('SELECT * FROM location_inspections').all()).results).toEqual(before);
   expect((await db.prepare('SELECT * FROM inventory_stock_rows ORDER BY id').all()).results).toEqual(stock);
-  expect((await db.prepare('SELECT COUNT(*) n FROM sku_inspections').first())?.n).toBe(0);expect((await db.prepare('SELECT COUNT(*) n FROM inspection_photos').first())?.n).toBe(0);
+  expect((await db.prepare('SELECT * FROM sku_inspections ORDER BY id').all()).results).toEqual(beforeSkus);expect((await db.prepare('SELECT COUNT(*) n FROM inspection_photos').first())?.n).toBe(0);
  });
 });

@@ -21,7 +21,7 @@ it('never infers task management rights from a desktop User-Agent; drafts are no
  expect((await(await call('tasks')).json() as any).tasks).toEqual([]);
  expect((await call('task')).status).toBe(410);
  task=await(await call('task',{manager:true})).json() as AuditTask;expect(task.lifecycle).toBe('DRAFT');
- expect((await call('export')).status).toBe(410);
+ expect((await call('export')).status).toBe(410);expect((await call('inspection-reference')).status).toBe(410);
 });
 it('exchanges a management key for a signed HttpOnly cookie; rejects bad keys, tampering and cross-origin changes',async()=>{
  expect((await call('manager',{method:'POST',data:{key:'bad'}})).status).toBe(403);
@@ -56,7 +56,7 @@ it('withdraws execution immediately and prevents stale-page writes after republi
 it('soft deletion removes the task from PDA, blocks photos and writes, retains isolated manager history/export',async()=>{
  const before=await db.prepare('SELECT * FROM change_audit_results WHERE task_id=?').bind(id).all();
  expect((await state('DELETED',3)).status).toBe(200);
- for(const action of ['task','status','progress','photo','export']) expect((await call(action)).status).toBe(410);
+ for(const action of ['task','status','progress','photo','export','inspection-reference']) expect((await call(action)).status).toBe(410);
  expect((await call('save',{method:'POST',data:{},revision:'4'})).status).toBe(410);
  expect((await call('photo',{method:'POST',data:{},revision:'4'})).status).toBe(410);
  expect((await(await call('tasks')).json() as any).tasks).toHaveLength(0);

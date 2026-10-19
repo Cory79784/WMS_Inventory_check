@@ -1,3 +1,4 @@
+import { useInspectionReference, InspectionReferenceRows, matchesReference } from './InspectionReference';
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, PlusCircle, FileQuestion, Camera, Save, RotateCw } from 'lucide-react';
@@ -11,14 +12,17 @@ import type { AuditResult, AuditLine, Target } from './model';
 import type { AuditSession, Upload } from './session';
 import { auditId, photoUrl } from './api';
 import { canComplete, taskSkuItems } from './inspectionAdapter';
-export function TaskInspectionEditor({ session, target, result, disabled, navigation }: {
+export function TaskInspectionEditor({ session, target, result, disabled, navigation, context, active = true }: {
     session: AuditSession;
     target: Target;
     result: AuditResult;
     disabled: boolean;
+    active?: boolean;
     navigation?: ReactNode;
+    context?: ReactNode;
 }) {
     const location = target.location, items = taskSkuItems(target, result);
+    const original = useInspectionReference(session.task,location,active);
     const [shortageModalSku, setShortageModalSku] = useState<LocationSkuItem | null>(null), [shortageCountInput, setShortageCountInput] = useState('1');
     const [shortageIsReturn, setShortageIsReturn] = useState(false), [shortageReturnCode, setShortageReturnCode] = useState('');
     const [showSurplusModal, setShowSurplusModal] = useState(false), [surplusMode, setSurplusMode] = useState<'SKU' | 'BARCODE' | 'NO_SKU'>('SKU');
@@ -166,7 +170,7 @@ export function TaskInspectionEditor({ session, target, result, disabled, naviga
     };
     const renderCard = (item: LocationSkuItem) => {
         const index = items.findIndex(s => s.lineId === item.lineId), book = target.skus.find(s => `book:${s.sku}` === item.lineId);
-        return <div key={item.lineId}><InspectionSkuCard item={item} idx={index} handleSetSkuNormal={normal} handleOpenShortage={openShortage} emphasizeBook bookLabel={t(session.task.stale ? 'auditReferenceBook' : 'auditCurrentBook')} unknownAllocation={!!book && book.availableQty === undefined}/>
+        return <div key={item.lineId}><InspectionSkuCard item={item} idx={index} handleSetSkuNormal={normal} handleOpenShortage={openShortage} emphasizeBook bookLabel={t(session.task.stale ? 'auditReferenceBook' : 'auditCurrentBook')} unknownAllocation={!!book && book.availableQty === undefined} reference={original.data && <InspectionReferenceRows version={original.data.versionNumber} rows={original.data.rows.filter(row=>result.lines.find(line=>matchesReference(row,line))?.id===item.lineId)}/>}/>
    <details className="px-3 py-1 text-xs text-slate-500"><summary>{t('notes')}</summary><input aria-label={`${t('notes')} ${item.sku}`} value={item.notes || ''} maxLength={1000} onChange={e => change({ lines: session.result(location).lines.map(l => l.id === item.lineId ? { ...l, notes: e.target.value } : l) })} className="w-full border rounded-lg px-3 py-2 mt-1"/></details>
   </div>;
     };
@@ -180,7 +184,10 @@ export function TaskInspectionEditor({ session, target, result, disabled, naviga
     {hasBook && !result.emptyConfirmed && <button type="button" onClick={allNormal} disabled={pending.length > 0} className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-sm active:scale-95 transition"><CheckCircle2 className="w-4 h-4 text-emerald-600"/>{t('allNormal')}</button>}</div>
     {!hasBook && <div className="mt-2 bg-amber-50 border border-amber-200 p-2.5 rounded-lg flex items-center justify-between"><div className="flex items-center gap-2 text-xs text-amber-800"><FileQuestion className="w-4 h-4 text-amber-600"/><span>{t('wmsEmpty')}</span></div><button type="button" onClick={confirmEmpty} disabled={pending.length > 0} className={`text-xs font-medium px-2.5 py-1 rounded transition ${result.emptyConfirmed ? 'bg-emerald-600 text-white' : 'bg-white border border-amber-300 text-amber-900 hover:bg-amber-100'}`}>{result.emptyConfirmed ? t('emptyConfirmed') : t('emptyConfirm')}</button></div>}
    </div>
+   {context}
    <div className="space-y-2.5"><div className="flex items-center justify-between px-1"><span className="text-xs font-bold text-slate-700">{t('locationCountTitle')} ({currentItems.length} {t('pieceCount')} SKU)</span><button type="button" onClick={() => { setManualInput(false); surplusLine.current = null; setSurplusUploadFailed(false); setShowSurplusModal(true); }} className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 border border-blue-200 active:scale-95 transition"><PlusCircle className="w-3.5 h-3.5"/>{t('surplusAdd')}</button></div>{currentItems.map(renderCard)}</div>
+   {original.error && <p role="status" className="text-xs text-amber-800">{t('auditReferenceFailed')} <button type="button" className="underline" onClick={original.retry}>{t('retry')}</button></p>}
+   {original.data && original.data.rows.some(row=>!result.lines.some(line=>matchesReference(row,line))) && <details className="text-xs text-slate-500"><summary>{t('auditOriginalExtras')}</summary><InspectionReferenceRows identify version={original.data.versionNumber} rows={original.data.rows.filter(row=>!result.lines.some(line=>matchesReference(row,line)))}/></details>}
    {residual.length > 0 && <details className="text-xs text-slate-500"><summary className="cursor-pointer py-2">{t('auditResidual')} ({residual.length})</summary><div className="space-y-2.5">{residual.map(renderCard)}</div></details>}
    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 space-y-2"><label className="block text-xs font-semibold text-slate-700">{t('locationRemarkLabel')}</label><textarea aria-label={t('notes')} rows={2} value={result.notes} maxLength={2000} onChange={e => change({ notes: e.target.value })} placeholder={t('locationRemarkPlaceholder')} className="w-full min-h-20 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 resize-y"/></div>
    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 space-y-2"><div className="flex items-center justify-between"><span className="text-xs font-bold text-slate-700 flex items-center gap-1.5"><Camera className="w-4 h-4 text-blue-600"/>{t('photoCountTitle')} ({photos.length} {t('photoCountUnit')})</span><button type="button" onClick={() => photoRef.current?.click()} className="text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 px-2.5 py-1 rounded font-medium flex items-center gap-1">{t('photoAdd')}</button><input ref={photoRef} aria-label={t('photo')} type="file" multiple accept="image/jpeg,image/png,image/webp" capture="environment" className="hidden" onChange={e => { for (const file of Array.from(e.target.files || []))

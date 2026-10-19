@@ -183,9 +183,9 @@ export function ChangeAuditPage({ currentHall, active = true }: {
             setError(auditError((e as Error).message));
         }
     };
-    return <div className="max-w-2xl mx-auto px-2 sm:px-4 py-3 space-y-3 font-sans pb-24">
+    const controls = <div className="space-y-3" data-audit-controls>
   <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
-   <h2 className="text-lg font-bold text-slate-800">{currentHall} · {t('auditMenu')}</h2><p className="text-xs text-slate-500">{t('auditIntro')}</p>
+   <h2 className="text-lg font-bold text-slate-800">{currentHall} · {t('auditMenu')}</h2>
    {!handheld && ready && !manager && <details><summary className="text-sm cursor-pointer">{t('auditManage')}</summary><p className="text-xs text-slate-500 py-2">{t('auditManageHint')}</p><input type="password" aria-label={t('auditManageKey')} autoComplete="off" className={inputClass} value={credential} onChange={e=>setCredential(e.target.value)}/><button type="button" className={buttonClass} disabled={!credential} onClick={()=>void authorize()}>{t('auditUnlock')}</button></details>}
    {manager && <><button className={buttonClass} onClick={()=>void lockManager().then(()=>window.location.reload())}>{t('auditLock')}</button><label className="text-xs block"><input type="checkbox" checked={archived} onChange={e=>{const value=e.target.checked;setArchived(value);void listTasks(currentHall,undefined,value).then(list=>setTasks(list.tasks));}}/> {t('auditArchive')}</label></>}
    <label className="block text-sm">{t('auditTasks')}<select aria-label={t('auditTasks')} className={`${inputClass} w-full mt-1`} disabled={loading || creating} value={session?.task.id || ''} onChange={e => {
@@ -194,13 +194,12 @@ export function ChangeAuditPage({ currentHall, active = true }: {
         }}><option value="">{t('auditChooseTask')}</option>{session && !tasks.some(task => task.id === session.task.id) && <option value={session.task.id}>{session.task.createdAt} · {session.task.id}</option>}{tasks.map(task => <option key={task.id} value={task.id}>{task.createdAt} · {t(('auditState'+(task.status || 'DRAFT')) as TranslationKey)} · {task.id.slice(-8)} · {versions?.versions.find(v => v.importId === task.oldId)?.versionNumber ?? '?'} → {versions?.versions.find(v => v.importId === task.newId)?.versionNumber ?? '?'}</option>)}</select></label>
    {session && <button type="button" className={`${buttonClass} text-slate-500`} disabled={session.busy} onClick={() => void reload()}>{t('auditReload')}</button>}
    {loading && <p role="status">{t('compareLoading')}</p>}
-   {error && <p role="alert" className="text-sm text-red-600">{error}<button type="button" className="ml-2 underline" onClick={() => window.location.reload()}>{t('retry')}</button></p>}
+   {error && (!handheld || !session) && <p role="alert" className="text-sm text-red-600">{error}<button type="button" className="ml-2 underline" onClick={() => window.location.reload()}>{t('retry')}</button></p>}
   </div>
   {quarantined?.dirty && <div className="bg-amber-50 border rounded-xl p-3 text-xs space-y-2"><p>{t('auditUnavailableDraft')}</p><button className={buttonClass} disabled={quarantined.busy} onClick={()=>void quarantined.archiveDrafts().then(()=>{const id=quarantined.task.id;setQuarantined(null);return open(id);}).catch(e=>setError(auditError(e.message)))}>{t('auditArchiveDraft')}</button></div>}
   {manager && <details className="bg-white border border-slate-200 rounded-xl p-4" open={!session}>
    <summary className="font-semibold cursor-pointer">{t('compareTitle')} · {t('auditCreate')}</summary>
    <div className="space-y-3 pt-3">
-    <p className="text-xs text-slate-500">{t('auditRouteHint')}</p>
     <div className="grid sm:grid-cols-2 gap-3"><label className="text-xs">{t('auditStartRack')}<input aria-label={t('auditStartRack')} type="number" min="0" max="999" className={`${inputClass} block w-full mt-1`} value={config.startRack ?? ''} onChange={e => setConfig({ ...config, startRack: e.target.value === '' ? null : Number(e.target.value) })}/></label>
     <label className="text-xs">{t('auditStartEnd')}<select className={`${inputClass} block w-full mt-1`} value={config.startEnd} onChange={e => setConfig({ ...config, startEnd: e.target.value as RouteConfig['startEnd'] })}><option value="low">{t('auditLow')}</option><option value="high">{t('auditHigh')}</option></select></label></div>
     <label className="text-xs block">{t('auditPairs')}<textarea aria-label={t('auditPairs')} value={pairs} onChange={e => setPairs(e.target.value)} className={`${inputClass} block w-full mt-1 font-mono`} rows={2}/></label>
@@ -209,10 +208,15 @@ export function ChangeAuditPage({ currentHall, active = true }: {
    </div>
   </details>}
   {manager && session && session.task.lifecycle!=='DELETED' && <div className="bg-white p-3 rounded-xl border flex flex-wrap gap-2 items-center"><span className="text-xs">{t(('auditState'+(session.task.lifecycle || 'DRAFT')) as TranslationKey)}</span>{session.task.lifecycle!=='PUBLISHED' && <button className={buttonClass} disabled={session.task.stale || lifecycleBusy} onClick={()=>void lifecycle('PUBLISHED')}>{t('auditPublish')}</button>}{session.task.lifecycle==='PUBLISHED' && <button className={buttonClass} disabled={lifecycleBusy} onClick={()=>void lifecycle('WITHDRAWN')}>{t('auditWithdraw')}</button>}<button className={`${buttonClass} text-red-700`} disabled={lifecycleBusy} onClick={()=>void lifecycle('DELETED')}>{t('auditDelete')}</button></div>}
-  {session && <TaskWorkspace key={session.task.id} session={session} active={active} manager={manager} onUnavailable={()=>{if(session.dirty) setQuarantined(session);setSession(null);remember(taskKey,'');void listTasks(currentHall).then(list=>setTasks(list.tasks));setError(t('auditUnavailable'));}}/>}
  </div>;
+    const workspace = session && <TaskWorkspace key={session.task.id} session={session} active={active} handheld={handheld} manager={manager} onUnavailable={()=>{if(session.dirty) setQuarantined(session);setSession(null);remember(taskKey,'');void listTasks(currentHall).then(list=>setTasks(list.tasks));setError(t('auditUnavailable'));}}/>;
+    return <div className="max-w-2xl mx-auto px-2 sm:px-4 py-3 space-y-3 font-sans pb-24">
+      {handheld && session && error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {handheld && session ? <>{workspace}{controls}</> : <>{controls}{workspace}</>}
+    </div>;
 }
-function TaskWorkspace({ session, active, manager, onUnavailable }: {
+function TaskWorkspace({ session, active, manager, handheld, onUnavailable }: {
+    handheld:boolean;
     manager:boolean;
     onUnavailable:()=>void;
     session: AuditSession;
@@ -250,8 +254,9 @@ function TaskWorkspace({ session, active, manager, onUnavailable }: {
             input.blur();
             input.inputMode = 'none';
             input.focus({ preventScroll: true });
+            if(handheld) window.scrollTo({top:0,left:0,behavior:'auto'});
         }
-    }, [location, active]);
+    }, [location, active, handheld]);
     const select = (code: string) => { void session.flush(location); setLocation(code); remember(locationKey, code); setManual(false); setScan(''); setScanError(''); };
     const go = () => {
         const code = scan.trim().toUpperCase();
@@ -283,15 +288,18 @@ function TaskWorkspace({ session, active, manager, onUnavailable }: {
     const list = all.filter(code => !search.trim() || code.includes(search.trim().toUpperCase()) || task.plan.targets.find(t => t.location === code)?.skus.some(s => s.sku.toUpperCase().includes(search.trim().toUpperCase())));
     const pages = Math.max(1, Math.ceil(list.length / 30)), done = all.filter(code => !session.drafts.get(code)?.dirty && task.results[code]?.completed).length;
     const status = (code: string): TranslationKey => !session.drafts.get(code)?.dirty && task.results[code]?.completed ? 'auditDone' : 'auditPending';
-    return <div className="space-y-3">
-  <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
-   <p className="text-sm font-semibold">{t('auditCurrent')} {task.hall} · V{task.plan.comparison.oldVersion.versionNumber} → V{task.plan.comparison.newVersion.versionNumber}</p>
-   <p className="text-xs text-slate-500">{t('auditProgress', { done, total: all.length })}</p>
+    const warnings = <>
+      {handheld && draft?.error && <p role="alert" className="text-red-600 text-sm">{auditError(draft.error)}{draft.error!=='REVISION_CONFLICT' && !task.stale && !session.unavailable && <button type="button" className="underline ml-2" onClick={()=>void session.flush(location)}>{t('retry')}</button>}</p>}
    {session.unavailable && <p role="alert" className="text-red-700 text-sm">{t('auditUnavailableDraft')}<button className="underline ml-2" onClick={onUnavailable}>{t('auditBackTasks')}</button></p>}
    {task.lifecycle==='DELETED' && <p role="alert" className="text-red-700 text-sm">{t('auditStateDELETED')} · {t('auditTaskExport')}</p>}
    {task.lifecycle==='WITHDRAWN' && <p role="alert">{t('auditStateWITHDRAWN')}</p>}
    {task.stale && <p role="alert" className="text-amber-800 bg-amber-50 p-3 rounded-lg text-sm">{t('auditStale')}</p>}
    {session.storageError && <p role="alert" className="text-red-600 text-sm">{t('auditStorage')}</p>}
+</>;
+    const info = <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
+   <p className="text-sm font-semibold">{t('auditCurrent')} {task.hall} · V{task.plan.comparison.oldVersion.versionNumber} → V{task.plan.comparison.newVersion.versionNumber}</p>
+   <p className="text-xs text-slate-500">{t('auditProgress', { done, total: all.length })}</p>
+   {!handheld && warnings}
    <div className="flex gap-2"><input aria-label={t('auditScanner')} ref={scanner} inputMode={manual ? 'text' : 'none'} value={scan} placeholder={t('auditScanner')} onChange={e => setScan(e.target.value)} onKeyDown={e => {
             if (e.key === 'Enter' || e.key === 'Tab') {
                 e.preventDefault();
@@ -299,20 +307,22 @@ function TaskWorkspace({ session, active, manager, onUnavailable }: {
             }
         }} className={`${inputClass} flex-1 min-w-0 font-mono`}/><button type="button" aria-label={t('auditManual')} onClick={keyboard} className="rounded-full border p-2"><Keyboard className="w-5 h-5"/></button><button type="button" onClick={go} className={buttonClass}><ScanLine className="w-5 h-5"/></button></div>
    {scanError && <p role="alert" className="text-amber-800 text-sm">{scanError}</p>}
-  </div>
-  <details className="bg-white p-4 rounded-xl border border-slate-200"><summary className="font-semibold cursor-pointer">{t('auditRoute')} · {task.plan.route.length} / {all.length}</summary>
-   <p className="text-xs text-slate-500 py-2">{t('auditRouteHint')} {t('auditOrdinary')}</p>
+  </div>;
+    const routePanel = <details className="bg-white p-4 rounded-xl border border-slate-200"><summary className="font-semibold cursor-pointer">{t('auditRoute')} · {task.plan.route.length} / {all.length}</summary>
    <input aria-label={t('compareSearch')} value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder={t('compareSearch')} className={`${inputClass} w-full`}/>
    <div className="space-y-1 mt-2">{list.slice((page - 1) * 30, page * 30).map(code => {
             const entry = task.plan.targets.find(t => t.location === code)!;
             return <button type="button" key={code} onClick={() => select(code)} className={`w-full text-left rounded-lg border px-3 py-2 flex flex-wrap gap-2 text-xs ${code === location ? 'border-blue-400 bg-blue-50' : 'border-slate-100'}`}><span className="font-mono font-bold">{code}</span><span>{t(categoryKey(entry))}</span>{task.plan.special.includes(code) && <span className="text-amber-700">{t('auditSpecial')}</span>}<span className="ml-auto">{t(status(code))}{task.results[code]?.anomaly ? ' · ' + t('auditAnomaly') : ''}</span></button>;
         })}</div><div className="flex justify-between items-center mt-2"><button type="button" className={buttonClass} disabled={page <= 1} onClick={() => setPage(p => p - 1)}>{t('comparePrev')}</button><span className="text-xs">{page}/{pages}</span><button type="button" className={buttonClass} disabled={page >= pages} onClick={() => setPage(p => p + 1)}>{t('compareNext')}</button></div>
-  </details>
-  {!target || !result ? <p>{t('auditTaskEmpty')}</p> : <section className="space-y-2.5">
+  </details>;
+    const locationContext = target && result && <>
    <div className="flex flex-wrap justify-between items-center gap-2"><span className="text-xs text-blue-800 bg-blue-50 px-3 py-1 rounded-full">{t(categoryKey(target))}</span></div>
    <p className="text-sm text-slate-500">{t(status(location))}{isAnomaly(target, result) ? ' · ' + t('auditAnomaly') : ''}</p>
-   {target.risks.length ? <div className="bg-amber-50 rounded-lg p-3 text-xs text-amber-900 space-y-2"><p className="font-medium">{t('auditFocused')}</p>{target.risks.map((risk, i) => <p key={i}>{t(riskKeys[risk.kind], risk.params)}</p>)}</div> : <p className="text-xs text-slate-500">{t('auditOrdinary')}</p>}
-   <TaskInspectionEditor navigation={<nav aria-label={t('auditRoute')} className="grid grid-cols-2 gap-2">
+   {target.risks.length ? <div className="bg-amber-50 rounded-lg p-3 text-xs text-amber-900 space-y-2">{target.risks.map((risk, i) => <p key={i}>{t(riskKeys[risk.kind], risk.params)}</p>)}</div> : null}
+    </>;
+    const inspection = !target || !result ? <p>{t('auditTaskEmpty')}</p> : <section className="space-y-2.5">
+   {!handheld && locationContext}
+   <TaskInspectionEditor active={active} context={handheld ? locationContext : undefined} navigation={<nav aria-label={t('auditRoute')} className="grid grid-cols-2 gap-2">
      <button type="button" aria-label={t('auditPrev')} disabled={!previousCode} onClick={() => previousCode && select(previousCode)} className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm disabled:opacity-40">
       <span className="flex items-center gap-1 text-xs text-slate-500"><ChevronLeft className="w-4 h-4"/>{t('auditPrev')}</span>
       <span className="mt-1 block font-mono text-base sm:text-lg font-semibold text-slate-800">{previousCode || t('auditNoPrevious')}</span>
@@ -326,7 +336,9 @@ function TaskWorkspace({ session, active, manager, onUnavailable }: {
     {draft?.error && draft.error !== 'REVISION_CONFLICT' && !task.stale && <button type="button" className="ml-2 underline" onClick={() => void session.flush(location)}>{t('retry')}</button>}</div>
    <details className="text-xs text-slate-500"><summary className="cursor-pointer">{t('auditCompareDetails')}</summary>{target.changes.map(change => <p className="font-mono py-1" key={change.sku}>{change.sku}: {change.oldQty} → {change.newQty} ({change.differenceQty > 0 ? '+' : ''}{change.differenceQty})</p>)}</details>
 
-  </section>}
-  {manager && <TaskResultExport session={session}/>}
- </div>;
+  </section>;
+    return <div className="space-y-3" data-audit-workspace>
+      {handheld ? <>{warnings}{inspection}{info}{routePanel}</> : <>{info}{routePanel}{inspection}</>}
+      {manager && <TaskResultExport session={session}/>}
+    </div>;
 }
