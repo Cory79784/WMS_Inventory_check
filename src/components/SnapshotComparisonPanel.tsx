@@ -8,11 +8,20 @@ const PAGE_SIZE = 20;
 interface Props {
     hallId: HallId;
     language: ExportLanguage;
+    onStart?: (comparison: SnapshotComparison) => void;
+    creating?: boolean;
+    initialVersions?: {
+        versions: SnapshotVersion[];
+        activeImportId: string | null;
+    };
     onInspectLocation?: (location: string) => void;
 }
-export function SnapshotComparisonPanel({ hallId, language, onInspectLocation }: Props) {
-    const [open, setOpen] = useState(false), [versions, setVersions] = useState<SnapshotVersion[] | null>(null);
-    const [activeId, setActiveId] = useState<string | null>(null), [oldId, setOldId] = useState(''), [newId, setNewId] = useState('');
+export function SnapshotComparisonPanel({ hallId, language, onInspectLocation, onStart, creating, initialVersions }: Props) {
+    const [open, setOpen] = useState(false), [versions, setVersions] = useState<SnapshotVersion[] | null>(initialVersions?.versions || null);
+    const initial = initialVersions?.versions.find(v => v.importId === initialVersions.activeImportId) || initialVersions?.versions[0];
+    const [activeId, setActiveId] = useState<string | null>(initialVersions?.activeImportId || null);
+    const [oldId, setOldId] = useState(initialVersions?.versions.find(v => v.versionNumber < (initial?.versionNumber || 0))?.importId || '');
+    const [newId, setNewId] = useState(initial?.importId || '');
     const [loading, setLoading] = useState(false), [busy, setBusy] = useState(false), [exporting, setExporting] = useState(false);
     const [retry, setRetry] = useState(0);
     const [error, setError] = useState(''), [result, setResult] = useState<SnapshotComparison | null>(null);
@@ -31,13 +40,17 @@ export function SnapshotComparisonPanel({ hallId, language, onInspectLocation }:
             setLoading(false);
             setVersions(data.versions);
             setActiveId(data.activeImportId);
-            const latest = data.versions[0];
+            const latest = data.versions.find(v => v.importId === data.activeImportId) || data.versions[0];
             setNewId(latest?.importId || '');
             setOldId(data.versions.find(item => item.versionNumber < (latest?.versionNumber || 0))?.importId || '');
-        }).catch(error => { if (!abort.signal.aborted)
-            setError(error instanceof Error ? error.message : t('compareLoadFailed')); })
-            .finally(() => { if (!abort.signal.aborted)
-            setLoading(false); });
+        }).catch(error => {
+            if (!abort.signal.aborted)
+                setError(error instanceof Error ? error.message : t('compareLoadFailed'));
+        })
+            .finally(() => {
+            if (!abort.signal.aborted)
+                setLoading(false);
+        });
         return () => abort.abort();
     }, [open, hallId, versions, retry]);
     const invalidate = () => { setResult(null); setError(''); setPage(1); setSearch(''); };
@@ -101,24 +114,25 @@ export function SnapshotComparisonPanel({ hallId, language, onInspectLocation }:
       {versions && versions.length < 2 && <p className="text-sm text-slate-500">{t('compareNoVersions')}</p>}
       {versions && versions.length >= 2 && <>
         <div className="grid sm:grid-cols-2 gap-3 text-xs">
-          <label className="text-slate-600">{t('compareOldVersion')}<select aria-label={t('compareOldVersion')} value={oldId} disabled={busy || exporting} onChange={event => { setOldId(event.target.value); invalidate(); }} className="block w-full mt-1 border border-slate-200 rounded-lg p-2 bg-slate-50">
+          <label className="text-slate-600">{t('compareOldVersion')}<select aria-label={t('compareOldVersion')} value={oldId} disabled={busy || exporting || creating} onChange={event => { setOldId(event.target.value); invalidate(); }} className="block w-full mt-1 border border-slate-200 rounded-lg p-2 bg-slate-50">
             <option value="">—</option>{versions.map(item => <option key={item.importId} value={item.importId} disabled={!!newVersion && item.versionNumber >= newVersion.versionNumber}>{label(item)}</option>)}
           </select>{oldVersion && <span className="block mt-1 truncate" title={oldVersion.originalFilename}>{oldVersion.originalFilename}</span>}</label>
-          <label className="text-slate-600">{t('compareNewVersion')}<select aria-label={t('compareNewVersion')} value={newId} disabled={busy || exporting} onChange={event => { setNewId(event.target.value); invalidate(); }} className="block w-full mt-1 border border-slate-200 rounded-lg p-2 bg-slate-50">
+          <label className="text-slate-600">{t('compareNewVersion')}<select aria-label={t('compareNewVersion')} value={newId} disabled={busy || exporting || creating} onChange={event => { setNewId(event.target.value); invalidate(); }} className="block w-full mt-1 border border-slate-200 rounded-lg p-2 bg-slate-50">
             {versions.map(item => <option key={item.importId} value={item.importId}>{label(item)}</option>)}
           </select>{newVersion && <span className="block mt-1 truncate" title={newVersion.originalFilename}>{newVersion.originalFilename}</span>}</label>
         </div>
-        <button type="button" onClick={run} disabled={!validPair || busy || exporting} className="bg-blue-600 text-white text-sm font-medium rounded-lg px-4 py-2 disabled:opacity-50">{busy ? t('compareLoading') : t('compareRun')}</button>
+        <button type="button" onClick={run} disabled={!validPair || busy || exporting || creating} className="bg-blue-600 text-white text-sm font-medium rounded-lg px-4 py-2 disabled:opacity-50">{busy ? t('compareLoading') : t('compareRun')}</button>
       </>}
       {error && <p role="alert" className="text-sm text-red-600">{error}{versions === null && !loading && <button type="button" className="ml-2 underline" onClick={() => { setRetry(value => value + 1); }}>{t('retry')}</button>}</p>}
       {result && <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2"><span className="font-mono text-sm text-slate-600">{hallId} · V{result.oldVersion.versionNumber} → V{result.newVersion.versionNumber}</span>
           <button type="button" disabled={!result.locations.length || exporting} onClick={download} className="flex items-center gap-1.5 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-700 disabled:opacity-50"><Download className="w-4 h-4"/>{t('compareDifferenceExport')}</button></div>
         {exporting && <p role="status" className="text-xs text-slate-500">{t('compareExporting')}</p>}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {onStart && <button type="button" disabled={creating || result.newVersion.importId !== activeId || !result.locations.length} onClick={() => onStart(result)} className="bg-blue-600 text-white px-4 py-2 rounded-lg disabled:opacity-40">{creating ? t('auditSaving') : t('auditCreate')}</button>}
+        {!onStart && <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {[[t('compareChangedLocations'), result.summary.changedLocations], [t('compareSkuChanges'), result.summary.changedSkuRows],
-                [t('compareAdded'), result.summary.addedSkuRows], [t('compareRemoved'), result.summary.removedSkuRows]].map(([title, value]) => <div key={title} className="bg-slate-50 border border-slate-100 rounded-lg px-3 py-2"><p className="text-xs text-slate-500">{title}</p><p className="text-lg font-semibold text-slate-800">{value}</p></div>)}
-        </div>
+                    [t('compareAdded'), result.summary.addedSkuRows], [t('compareRemoved'), result.summary.removedSkuRows]].map(([title, value]) => <div key={title} className="bg-slate-50 border border-slate-100 rounded-lg px-3 py-2"><p className="text-xs text-slate-500">{title}</p><p className="text-lg font-semibold text-slate-800">{value}</p></div>)}
+        </div>}
         {!result.locations.length ? <p className="text-sm text-emerald-700 bg-emerald-50 rounded-lg p-3">{t('compareNoChanges')}</p> : <>
           <input aria-label={t('compareSearch')} placeholder={t('compareSearch')} value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} className="border border-slate-200 rounded-lg p-2 text-sm w-full"/>
           {!visible.length && <p className="text-sm text-slate-500">{t('compareNoSearchMatches')}</p>}
@@ -126,7 +140,7 @@ export function SnapshotComparisonPanel({ hallId, language, onInspectLocation }:
             <summary className="cursor-pointer px-3 py-3 bg-slate-50 flex flex-wrap items-center gap-2">
               <span className="font-mono font-semibold text-slate-800">{location.locationCode}</span>
               <span className={`text-[11px] px-2 py-0.5 rounded-full ${location.changeType === 'NEW_LOCATION' ? 'bg-emerald-100 text-emerald-800' : location.changeType === 'EMPTIED_LOCATION' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}`}>{t(location.changeType === 'NEW_LOCATION' ? 'compareNewLocation' : location.changeType === 'EMPTIED_LOCATION' ? 'compareEmptiedLocation' : 'compareChangedLocation')}</span>
-              <span className="text-xs text-slate-500 ml-auto">{location.oldTotalQty} → {location.newTotalQty} · {location.changes.length} SKU</span>
+              <span className="text-xs text-slate-500 ml-auto">{!onStart && <>{location.oldTotalQty} → {location.newTotalQty} · </>}{location.changes.length} SKU</span>
             </summary>
             <div className="p-3 space-y-3"><div className="overflow-x-auto"><table className="w-full text-xs text-left"><thead className="text-slate-500 border-b border-slate-200"><tr><th className="py-2 pr-3">SKU</th><th className="p-2">{t('compareChangeType')}</th><th className="p-2 text-right">{t('compareOldQty')}</th><th className="p-2 text-right">{t('compareNewQty')}</th><th className="p-2 text-right">{t('compareDelta')}</th></tr></thead>
               <tbody>{location.changes.map(change => <tr key={change.sku} className="border-b border-slate-100 last:border-0"><td dir="ltr" className="py-2 pr-3 font-mono">{change.sku}</td><td className="p-2 text-slate-500">{t(change.changeType === 'ADDED' ? 'compareAdded' : change.changeType === 'REMOVED' ? 'compareRemoved' : 'compareQuantityChanged')}</td><td className="p-2 text-right tabular-nums">{change.oldQty}</td><td className="p-2 text-right tabular-nums">{change.newQty}</td><td className={`p-2 text-right font-semibold tabular-nums ${change.differenceQty > 0 ? 'text-emerald-700' : 'text-amber-700'}`}>{change.differenceQty > 0 ? '+' : ''}{change.differenceQty}</td></tr>)}</tbody>
