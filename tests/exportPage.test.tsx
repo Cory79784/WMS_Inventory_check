@@ -28,3 +28,8 @@ describe('Independent export language and version scope',()=>{
   }
  });
 });
+it('keeps original inspection exports here and moves snapshot comparison to its own menu',async()=>{
+ container=document.createElement('div');document.body.appendChild(container);root=createRoot(container);
+ await act(async()=>root.render(<Page currentHall="H1"/>));
+ expect(container.textContent).not.toContain('WMS 快照对比');expect(container.textContent).toContain('仅导出差异');expect(container.textContent).toContain('导出全部核查结果');
+});

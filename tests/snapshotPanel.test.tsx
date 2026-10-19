@@ -38,3 +38,16 @@ it('loads on expansion, previews folded locations, exports all changes despite p
 it('does not allow historical comparison to change the active WMS during review',async()=>{
  const inspect=await mount('different-active');await expand();await click('查看变动库位');await click('去核查（当前 WMS）');expect(inspect).not.toHaveBeenCalled();
 });
+it('defaults to the active version, reuses supplied metadata, and starts an independent task without quantity summary cards',async()=>{
+ container=document.createElement('div');document.body.appendChild(container);root=createRoot(container);
+ const start=vi.fn();mocks.compare.mockResolvedValue(result);
+ const metadata={versions:[{...versions[0],importId:'future',versionNumber:3},...versions],activeImportId:'new'};
+ await act(async()=>root.render(<Panel hallId="H1" language="zh" initialVersions={metadata} onStart={start}/>));
+ await expand();expect(mocks.versions).not.toHaveBeenCalled();
+ expect((container.querySelectorAll('select')[0] as HTMLSelectElement).value).toBe('old');
+ expect((container.querySelectorAll('select')[1] as HTMLSelectElement).value).toBe('new');
+ await click('查看变动库位');expect(container.textContent).not.toContain('变动 SKU 明细');await click('建立独立核查任务');expect(start).toHaveBeenCalledWith(result);
+ await act(async()=>{const select=container.querySelectorAll('select')[1];select.value='future';select.dispatchEvent(new window.Event('change',{bubbles:true}));});
+ mocks.compare.mockResolvedValue({...result,newVersion:metadata.versions[0]});await click('查看变动库位');
+ const create=Array.from(container.querySelectorAll('button')).find(b=>b.textContent==='建立独立核查任务')!;expect(create.disabled).toBe(true);
+});

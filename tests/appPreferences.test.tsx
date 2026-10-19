@@ -9,6 +9,7 @@ vi.mock('../src/pages/LocationInspectionPage', () => ({
 }));
 vi.mock('../src/pages/WMSImportPage', () => ({ WMSImportPage: () => <div>import-page</div> }));
 vi.mock('../src/pages/InspectionExportPage', () => ({ InspectionExportPage: () => <div>export-page</div> }));
+vi.mock('../src/pages/ChangeAuditPage', () => ({ ChangeAuditPage: () => <div>change-audit-page</div> }));
 vi.mock('../src/pages/DeviceTestPage', () => ({ DeviceTestPage: () => <div>device-test</div> }));
 vi.mock('../src/pages/ArchitecturePage', () => ({ ArchitecturePage: () => <div>architecture</div> }));
 let App: any, root: any, createRoot: any, container: HTMLDivElement;
@@ -49,7 +50,7 @@ describe('Tab hall selection and handheld presentation', () => {
     Object.defineProperty(navigator, 'userAgent', { configurable: true, value: userAgent });
     Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: maxTouchPoints });
     await render();
-    expect(button('WMS 导入')).toBeUndefined(); expect(button('导出')).toBeUndefined();
+    expect(button('WMS 导入')).toBeUndefined(); expect(button('导出')).toBeUndefined(); expect(button('库存变动核查')).toBeUndefined();
     expect(container.querySelector('[data-testid="inspection"]')?.textContent).toBe('H1:false');
     await click('H2'); await remount();
     expect(container.querySelector('[data-testid="inspection"]')?.textContent).toBe('H2:false');
@@ -59,6 +60,8 @@ describe('Tab hall selection and handheld presentation', () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 360 });
     await render(); await click('WMS 导入'); expect(container.textContent).toContain('import-page');
     await click('导出'); expect(container.textContent).toContain('export-page');
+    await click('库存变动核查'); expect(container.textContent).toContain('change-audit-page');
+    await remount(); expect(container.textContent).toContain('change-audit-page');
   });
   it('validates stored hall IDs and clears the selection on explicit exit', async () => {
     const { readSessionHall, clearSessionHall } = await import('../src/utils/sessionHall');

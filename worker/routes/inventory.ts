@@ -1,3 +1,4 @@
+import { handleChangeAudit } from './change-audit';
 import { handleSnapshotComparison } from './snapshot-compare';
 import { Env, AuthUser } from '../types';
 import { authenticateRequest } from '../auth/access';
@@ -30,6 +31,8 @@ interface StockRowInput {
 export async function handleInventoryRoutes(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
+
+  if (path.startsWith('/api/inventory/change-audit/')) return handleChangeAudit(request, env);
 
   // Public attribution; no login or session is required.
   const auth = await authenticateRequest(request, env);
