@@ -1,5 +1,8 @@
 import type { TranslationKey } from './zh';
 export const de: Record<TranslationKey, string> = {
+  auditNoPrevious: "Kein vorheriges Ziel",
+  auditNoNext: "Kein nächstes Ziel",
+
   auditArchiveDraft: "Alten Entwurf separat behalten und gültige Aufgabe öffnen",
   auditArchive: "Gelöschte Aufgaben anzeigen (nur Export)",
   auditManage: "Aufgabenverwaltung (PC)",

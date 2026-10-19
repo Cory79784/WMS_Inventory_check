@@ -270,10 +270,11 @@ function TaskWorkspace({ session, active, manager, onUnavailable }: {
         setManual(next);
         input.focus({ preventScroll: true });
     };
+    const previousCode = all[all.indexOf(location) - 1];
+    const routeIndex = task.plan.route.indexOf(location);
+    const remainingRoute = routeIndex < 0 ? task.plan.route : task.plan.route.slice(routeIndex + 1).concat(task.plan.route.slice(0, routeIndex));
+    const nextCode = remainingRoute.find(code => session.drafts.get(code)?.dirty || !task.results[code]?.completed);
     const next = () => {
-        const route = task.plan.route, index = route.indexOf(location);
-        const ordered = index < 0 ? route : route.slice(index + 1).concat(route.slice(0, index));
-        const nextCode = ordered.find(code => session.drafts.get(code)?.dirty || !task.results[code]?.completed);
         if (nextCode)
             select(nextCode);
         else
@@ -311,11 +312,20 @@ function TaskWorkspace({ session, active, manager, onUnavailable }: {
    <div className="flex flex-wrap justify-between items-center gap-2"><span className="text-xs text-blue-800 bg-blue-50 px-3 py-1 rounded-full">{t(categoryKey(target))}</span></div>
    <p className="text-sm text-slate-500">{t(status(location))}{isAnomaly(target, result) ? ' · ' + t('auditAnomaly') : ''}</p>
    {target.risks.length ? <div className="bg-amber-50 rounded-lg p-3 text-xs text-amber-900 space-y-2"><p className="font-medium">{t('auditFocused')}</p>{target.risks.map((risk, i) => <p key={i}>{t(riskKeys[risk.kind], risk.params)}</p>)}</div> : <p className="text-xs text-slate-500">{t('auditOrdinary')}</p>}
-   <TaskInspectionEditor key={location} session={session} target={target} result={result} disabled={task.stale || session.unavailable || (task.lifecycle==='WITHDRAWN' || task.lifecycle==='DELETED') || draft?.error === 'REVISION_CONFLICT'}/>
+   <TaskInspectionEditor navigation={<nav aria-label={t('auditRoute')} className="grid grid-cols-2 gap-2">
+     <button type="button" aria-label={t('auditPrev')} disabled={!previousCode} onClick={() => previousCode && select(previousCode)} className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm disabled:opacity-40">
+      <span className="flex items-center gap-1 text-xs text-slate-500"><ChevronLeft className="w-4 h-4"/>{t('auditPrev')}</span>
+      <span className="mt-1 block font-mono text-base sm:text-lg font-semibold text-slate-800">{previousCode || t('auditNoPrevious')}</span>
+     </button>
+     <button type="button" aria-label={t('auditNext')} disabled={!nextCode} onClick={next} className="min-w-0 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-right shadow-sm disabled:opacity-40">
+      <span className="flex items-center justify-end gap-1 text-xs text-blue-700">{t('auditNext')}<ChevronRight className="w-4 h-4"/></span>
+      <span className="mt-1 block font-mono text-base sm:text-lg font-semibold text-blue-900">{nextCode || t('auditNoNext')}</span>
+     </button>
+    </nav>} key={location} session={session} target={target} result={result} disabled={task.stale || session.unavailable || (task.lifecycle==='WITHDRAWN' || task.lifecycle==='DELETED') || draft?.error === 'REVISION_CONFLICT'}/>
    <div role="status" className={`text-sm ${draft?.error ? 'text-red-600' : 'text-slate-500'}`}>{draft?.error ? auditError(draft.error) : draft?.saving ? t('auditSaving') : draft?.dirty ? t('auditSavePending') : task.results[location]?.savedAt ? `${t('saved')} · ${new Date(task.results[location].savedAt!).toLocaleTimeString()}` : t('auditUnsaved')}
     {draft?.error && draft.error !== 'REVISION_CONFLICT' && !task.stale && <button type="button" className="ml-2 underline" onClick={() => void session.flush(location)}>{t('retry')}</button>}</div>
    <details className="text-xs text-slate-500"><summary className="cursor-pointer">{t('auditCompareDetails')}</summary>{target.changes.map(change => <p className="font-mono py-1" key={change.sku}>{change.sku}: {change.oldQty} → {change.newQty} ({change.differenceQty > 0 ? '+' : ''}{change.differenceQty})</p>)}</details>
-   <div className="flex justify-between gap-2"><button type="button" className={`${buttonClass} flex gap-1 items-center`} disabled={all.indexOf(location) <= 0} onClick={() => select(all[all.indexOf(location) - 1])}><ChevronLeft className="w-4 h-4"/>{t('auditPrev')}</button><button type="button" className={`${buttonClass} flex gap-1 items-center`} onClick={next}>{t('auditNext')}<ChevronRight className="w-4 h-4"/></button></div>
+
   </section>}
   {manager && <TaskResultExport session={session}/>}
  </div>;

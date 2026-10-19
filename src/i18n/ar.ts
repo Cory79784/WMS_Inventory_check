@@ -1,5 +1,8 @@
 import type { TranslationKey } from './zh';
 export const ar: Record<TranslationKey, string> = {
+  auditNoPrevious: "لا يوجد هدف سابق",
+  auditNoNext: "لا يوجد هدف تالٍ",
+
   auditArchiveDraft: "حفظ نسخة منفصلة من المسودة وفتح المهمة الصالحة",
   auditArchive: "عرض المهام المحذوفة (للتصدير فقط)",
   auditManage: "إدارة المهام (PC)",

@@ -1,4 +1,7 @@
 export const zh = {
+  auditNoPrevious: "无上一目标",
+  auditNoNext: "无下一目标",
+
   auditArchiveDraft: "保留旧草稿副本并重新打开有效任务",
   auditArchive: "包含已删除历史任务（只读导出）",
   auditManage: "任务管理（PC）",

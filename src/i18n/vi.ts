@@ -1,5 +1,8 @@
 import type { TranslationKey } from './zh';
 export const vi: Record<TranslationKey, string> = {
+  auditNoPrevious: "Không có mục trước",
+  auditNoNext: "Không có mục tiếp",
+
   auditArchiveDraft: "Giữ riêng bản nháp cũ và mở nhiệm vụ hợp lệ",
   auditArchive: "Hiện nhiệm vụ đã xóa (chỉ xuất)",
   auditManage: "Quản lý nhiệm vụ (PC)",

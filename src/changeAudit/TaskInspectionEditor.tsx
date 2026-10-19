@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, PlusCircle, FileQuestion, Camera, Save, RotateCw } from 'lucide-react';
 import { InspectionSkuCard } from '../components/InspectionSkuCard';
@@ -10,11 +11,12 @@ import type { AuditResult, AuditLine, Target } from './model';
 import type { AuditSession, Upload } from './session';
 import { auditId, photoUrl } from './api';
 import { canComplete, taskSkuItems } from './inspectionAdapter';
-export function TaskInspectionEditor({ session, target, result, disabled }: {
+export function TaskInspectionEditor({ session, target, result, disabled, navigation }: {
     session: AuditSession;
     target: Target;
     result: AuditResult;
     disabled: boolean;
+    navigation?: ReactNode;
 }) {
     const location = target.location, items = taskSkuItems(target, result);
     const [shortageModalSku, setShortageModalSku] = useState<LocationSkuItem | null>(null), [shortageCountInput, setShortageCountInput] = useState('1');
@@ -171,6 +173,7 @@ export function TaskInspectionEditor({ session, target, result, disabled }: {
     const currentItems = items.filter(i => i.systemQty > 0 || i.lineId?.startsWith('extra:')), residual = items.filter(i => i.systemQty === 0 && i.lineId?.startsWith('book:'));
     return <div className="space-y-2.5">
   {message && <p role="alert" className="text-sm text-red-600">{message}</p>}
+  {navigation}
   <fieldset disabled={blocked} className="space-y-2.5">
    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
     <div className="flex items-center justify-between"><div><span className="text-[11px] text-slate-400 font-medium">{t('currentPhysical')}</span><h2 className="text-2xl font-bold font-mono text-slate-900 tracking-tight flex items-center gap-2">{location}{result.emptyConfirmed && <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-normal font-sans border border-slate-200">{t('emptyConfirm')}</span>}</h2></div>

@@ -29,7 +29,7 @@ beforeEach(async()=>{
  await act(async()=>root.render(<Page currentHall="H1"/>));
 });
 afterEach(async()=>{await act(async()=>root.unmount());container.remove();});
-const button=(text:string)=>Array.from(container.querySelectorAll('button')).find(b=>b.textContent?.trim()===text)!;
+const button=(text:string)=>Array.from(container.querySelectorAll('button')).find(b=>b.getAttribute('aria-label')===text || b.textContent?.trim()===text)!;
 async function click(text:string){await act(async()=>button(text).click());}
 async function type(input:HTMLInputElement,value:string){await act(async()=>{Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value')!.set!.call(input,value);input.dispatchEvent(new window.Event('input',{bubbles:true}));});}
 const input=(label:string)=>container.querySelector(`input[aria-label="${label}"]`) as HTMLInputElement;
@@ -46,7 +46,12 @@ it('uses the shared original card and shortage buttons, emphasizes new book stoc
  expect(mock.saveResult).toHaveBeenLastCalledWith('H1',task.id,'103-001-1',expect.objectContaining({completed:true,lines:[expect.objectContaining({actual:5})]}),0);
 });
 it('walks in snake order, supports direct scans, and leaves non-target visual checks unfinished',async()=>{
- await click('下一个未完成目标');expect(container.querySelector('h2.font-mono')?.textContent).toBe('104-001-1');expect(container.textContent).toContain('变成空库位');
+ const previous=button('上一目标'),nextTarget=button('下一个未完成目标');
+ expect(previous.disabled).toBe(true);expect(previous.textContent).toContain('无上一目标');
+ expect(nextTarget.textContent).toContain('104-001-1');
+ const physical=container.querySelector('h2.font-mono')!;
+ expect(nextTarget.compareDocumentPosition(physical) & window.Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ await click('下一个未完成目标');expect(container.querySelector('h2.font-mono')?.textContent).toBe('104-001-1');expect(container.textContent).toContain('变成空库位');expect(button('上一目标').textContent).toContain('103-001-1');
  const scanner=input('扫描/输入目标库位');expect(scanner.inputMode).toBe('none');
  const keyboard=container.querySelector('[aria-label="切换手动键盘"]') as HTMLButtonElement;await act(async()=>keyboard.click());expect(scanner.inputMode).toBe('text');
  await type(scanner,'103-001-1');await act(async()=>scanner.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Enter',bubbles:true})));
