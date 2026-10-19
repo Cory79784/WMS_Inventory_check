@@ -1,4 +1,18 @@
 export const zh = {
+  auditExportSavedOnly: "参考版本已过期：导出仅含服务器已保存结果，不含本地草稿。",
+
+  auditQtyMinus: "减少一件",
+  auditQtyPlus: "增加一件",
+  auditCurrentBook: "系统数量",
+  auditReferenceBook: "任务参考数量",
+  auditResidual: "旧版货物 / 残留检查（新版账面为 0）",
+  auditTaskExport: "本任务核查结果导出",
+  auditExportPending: "仅导出服务器已完成结果，未完成 {count} 个库位。",
+  auditExportDirty: "本任务有未保存更改或照片，保存完成后才能导出。",
+  auditAllNormalKeepEvidence: "此操作会将数量全部设为相符，并清除本库位现有额外货物、备注和照片关联。是否继续？",
+  auditCreated: "创建",
+  auditSnapshotExport: "WMS 账面快照变动表",
+
   auditMenu: "库存变动核查",
   auditIntro: "按蛇形路线检查变动库位。风险提示不改变路线；目视查看不算完成数量核查。",
   auditCreate: "建立独立核查任务",

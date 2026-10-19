@@ -2,8 +2,9 @@ import React,{act} from 'react';
 import {beforeAll,beforeEach,afterEach,it,expect,vi} from 'vitest';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),{JSDOM}=require('jsdom');
-const mock=vi.hoisted(()=>({loadTask:vi.fn(),listTasks:vi.fn(),saveResult:vi.fn(),taskStatus:vi.fn(),uploadPhoto:vi.fn(),fetchVersions:vi.fn()}));
+const mock=vi.hoisted(()=>({loadTask:vi.fn(),listTasks:vi.fn(),saveResult:vi.fn(),taskStatus:vi.fn(),uploadPhoto:vi.fn(),fetchVersions:vi.fn(),downloadTask:vi.fn().mockResolvedValue({})}));
 vi.mock('../src/changeAudit/api',async()=>({...await vi.importActual('../src/changeAudit/api'),...mock}));
+vi.mock('../src/changeAudit/taskExport',()=>({downloadTaskResults:mock.downloadTask}));
 vi.mock('../src/services/snapshotCompare',()=>({fetchSnapshotVersions:mock.fetchVersions}));
 import type {AuditTask} from '../src/changeAudit/model';
 let root:any,container:HTMLDivElement,Page:any,createRoot:any,number=0;
@@ -32,34 +33,94 @@ const button=(text:string)=>Array.from(container.querySelectorAll('button')).fin
 async function click(text:string){await act(async()=>button(text).click());}
 async function type(input:HTMLInputElement,value:string){await act(async()=>{Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value')!.set!.call(input,value);input.dispatchEvent(new window.Event('input',{bubbles:true}));});}
 const input=(label:string)=>container.querySelector(`input[aria-label="${label}"]`) as HTMLInputElement;
-it('restores task/route, separates classifications and only counts explicit quantity completion',async()=>{
+it('uses the shared original card and shortage buttons, emphasizes new book stock and autosaves completion',async()=>{
  expect(container.textContent).toContain('库存变动核查');expect(container.textContent).toContain('原文商品');expect(container.textContent).toContain('已完成数量核查 0/3');
+ expect(container.textContent).toContain('系统数量');expect(container.querySelectorAll('input[type="number"]')).toHaveLength(1); // route configuration only
+ expect(container.querySelector('input[aria-label="实盘数量 SKU1"]')).toBeNull();
  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,750));});expect(mock.saveResult).not.toHaveBeenCalled();
- await click('确认完成数量核查');expect(container.textContent).toContain('请填写每条实盘数量');expect(mock.saveResult).not.toHaveBeenCalled();
- await type(input('实盘数量 SKU1'),'4');await act(async()=>{await new Promise(resolve=>setTimeout(resolve,750));});
- expect(mock.saveResult).toHaveBeenLastCalledWith('H1',task.id,'103-001-1',expect.objectContaining({completed:false,lines:[expect.objectContaining({actual:4})]}));
- await click('确认完成数量核查');expect(mock.saveResult).toHaveBeenLastCalledWith('H1',task.id,'103-001-1',expect.objectContaining({completed:true}));
+ await click('少货');expect(container.textContent).toContain('确认少货');expect(container.querySelectorAll('input[type="number"]')).toHaveLength(1);
+ await click('确认少货');await act(async()=>{await new Promise(resolve=>setTimeout(resolve,750));});
+ expect(mock.saveResult).toHaveBeenLastCalledWith('H1',task.id,'103-001-1',expect.objectContaining({completed:true,lines:[expect.objectContaining({actual:4})]}));
  expect(container.textContent).toContain('已完成数量核查 1/3');
+ await click('正常');await act(async()=>{await new Promise(resolve=>setTimeout(resolve,750));});
+ expect(mock.saveResult).toHaveBeenLastCalledWith('H1',task.id,'103-001-1',expect.objectContaining({completed:true,lines:[expect.objectContaining({actual:5})]}));
 });
 it('walks in snake order, supports direct scans, and leaves non-target visual checks unfinished',async()=>{
- await click('下一个未完成目标');expect(container.querySelector('h3')?.textContent).toBe('104-001-1');expect(container.textContent).toContain('变成空库位');
+ await click('下一个未完成目标');expect(container.querySelector('h2.font-mono')?.textContent).toBe('104-001-1');expect(container.textContent).toContain('变成空库位');
  const scanner=input('扫描/输入目标库位');expect(scanner.inputMode).toBe('none');
  const keyboard=container.querySelector('[aria-label="切换手动键盘"]') as HTMLButtonElement;await act(async()=>keyboard.click());expect(scanner.inputMode).toBe('text');
  await type(scanner,'103-001-1');await act(async()=>scanner.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Enter',bubbles:true})));
- expect(container.querySelector('h3')?.textContent).toBe('103-001-1');expect(scanner.inputMode).toBe('none');
+ expect(container.querySelector('h2.font-mono')?.textContent).toBe('103-001-1');expect(scanner.inputMode).toBe('none');
  await type(scanner,'999-001-1');await act(async()=>scanner.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Enter',bubbles:true})));
  expect(container.textContent).toContain('此库位不在当前任务中');expect(mock.saveResult).not.toHaveBeenCalled();expect(sessionStorage.getItem(`wms-change-audit-location:${task.id}`)).toBe('103-001-1');
 });
 it('disables actual-count writes for an expired reference version',async()=>{
  await act(async()=>root.unmount());root=createRoot(container);task.stale=true;
  await act(async()=>root.render(<Page currentHall="H1"/>));
- expect(container.textContent).toContain('任务参考版本已过期');expect(input('实盘数量 SKU1').closest('fieldset')?.disabled).toBe(true);
- expect(button('确认完成数量核查').disabled).toBe(true);expect(mock.saveResult).not.toHaveBeenCalled();
+ expect(container.textContent).toContain('任务参考版本已过期');expect(button('正常').closest('fieldset')?.disabled).toBe(true);expect(container.textContent).toContain('任务参考数量');
+ expect(button('保存本库位核查').closest('fieldset')?.disabled).toBe(true);expect(mock.saveResult).not.toHaveBeenCalled();
 });
 it('rechecks the pointer when returning from another menu and locks a newly expired task',async()=>{
  await act(async()=>root.render(<Page currentHall="H1" active={false}/>));
  mock.taskStatus.mockResolvedValueOnce({stale:true});
  await act(async()=>root.render(<Page currentHall="H1" active={true}/>));
  expect(mock.taskStatus).toHaveBeenCalledWith('H1',task.id);expect(container.textContent).toContain('任务参考版本已过期');
- expect(input('实盘数量 SKU1').closest('fieldset')?.disabled).toBe(true);
+ expect(button('正常').closest('fieldset')?.disabled).toBe(true);expect(container.textContent).toContain('任务参考数量');
+});
+it('adds an identified surplus through the original modal with quantity buttons and auto completion',async()=>{
+ await click('+ 现场多货');expect(container.textContent).toContain('添加现场多货');
+ const sku=container.querySelector('input[placeholder="扫描或输入外箱 SKU"]') as HTMLInputElement;await type(sku,'EXTRA-UI');
+ expect(container.querySelectorAll('input[type="number"]')).toHaveLength(1);
+ await click('确认添加多货');await act(async()=>{await new Promise(resolve=>setTimeout(resolve,750));});
+ expect(mock.saveResult).toHaveBeenCalledWith('H1',task.id,'103-001-1',expect.objectContaining({completed:false,lines:expect.arrayContaining([expect.objectContaining({sku:'EXTRA-UI',actual:1})])}));
+ await act(async()=>Array.from(container.querySelectorAll('button')).find(b=>b.textContent?.trim()==='正常')!.click());
+ await act(async()=>{await new Promise(resolve=>setTimeout(resolve,750));});expect(mock.saveResult.mock.calls.at(-1)[3].completed).toBe(true);
+});
+it('confirms an empty location through the original empty button without number inputs',async()=>{
+ await click('下一个未完成目标');expect(container.textContent).toContain('旧版货物 / 残留检查');await click('确认为空库位');
+ await act(async()=>{await new Promise(resolve=>setTimeout(resolve,750));});
+ expect(mock.saveResult).toHaveBeenLastCalledWith('H1',task.id,'104-001-1',expect.objectContaining({completed:true,emptyConfirmed:true,lines:[expect.objectContaining({actual:0})]}));
+});
+it('exports the selected task by ID with its own language selector and still allows stale saved results',async()=>{
+ const panel=Array.from(container.querySelectorAll('details')).find(d=>d.querySelector('summary')?.textContent==='本任务核查结果导出')!;
+ const select=panel.querySelector('select')!;
+ await act(async()=>{select.value='de';select.dispatchEvent(new window.Event('change',{bubbles:true}));});
+ await act(async()=>Array.from(panel.querySelectorAll('button')).find(b=>b.textContent==='仅导出差异')!.click());
+ expect(mock.downloadTask).toHaveBeenLastCalledWith('H1',task.id,'differences','de');expect(panel.textContent).toContain(task.id);
+ expect(panel.textContent).toContain('未完成 3 个库位');
+});
+it('lets an expired task export server results while retaining local failed drafts',async()=>{
+ const {sessionFor}=await import('../src/changeAudit/session');const s=sessionFor(task);
+ await act(async()=>s.edit('103-001-1',{...s.result('103-001-1'),notes:'local not saved'}));
+ const panel=Array.from(container.querySelectorAll('details')).find(d=>d.querySelector('summary')?.textContent==='本任务核查结果导出')!;
+ expect((Array.from(panel.querySelectorAll('button'))[0] as HTMLButtonElement).disabled).toBe(true);
+ task.stale=true;await act(async()=>root.render(<Page currentHall="H1"/>));
+ expect(panel.textContent).toContain('不含本地草稿');
+ await act(async()=>Array.from(panel.querySelectorAll('button')).find(b=>b.textContent==='导出全部核查结果')!.click());
+ expect(mock.downloadTask).toHaveBeenLastCalledWith('H1',task.id,'all','zh');expect(s.dirty).toBe(true);
+});
+it('uses original no-SKU mandatory photo flow and keeps the photo bound to its extra line',async()=>{
+ const create=vi.spyOn(URL,'createObjectURL').mockReturnValue('blob:test-photo');const revoke=vi.spyOn(URL,'revokeObjectURL').mockImplementation(()=>{});
+ try {
+  mock.uploadPhoto.mockImplementation(async(_hall,_task,location,lineId,id)=>({id,location,lineId}));
+  await click('+ 现场多货');await click('无 SKU 货物');await click('确认添加多货');expect(mock.uploadPhoto).not.toHaveBeenCalled();
+  const modal=container.querySelector('.fixed')!;expect(modal.querySelector('input[type="number"]')).toBeNull();
+  const file=modal.querySelector('input[type="file"]')!;
+  await act(async()=>{Object.defineProperty(file,'files',{configurable:true,value:[new window.File(['photo'],'photo.png',{type:'image/png'})]});file.dispatchEvent(new window.Event('change',{bubbles:true}));});
+  await click('确认添加多货');await act(async()=>{await new Promise(resolve=>setTimeout(resolve,750));});
+  expect(mock.uploadPhoto).toHaveBeenCalledTimes(1);const lineId=mock.uploadPhoto.mock.calls[0][3];expect(lineId).toMatch(/^extra:/);
+  expect(task.photos[0].lineId).toBe(lineId);expect(mock.saveResult.mock.calls.at(-1)[3].lines).toEqual(expect.arrayContaining([expect.objectContaining({id:lineId,sku:'',actual:1})]));
+ } finally {create.mockRestore();revoke.mockRestore();}
+});
+it('all-normal resets task extras and photo overrides without deleting original image metadata',async()=>{
+ const {sessionFor}=await import('../src/changeAudit/session');const s=sessionFor(task);
+ task.photos.push({id:'photo-reset-task',location:'103-001-1',lineId:'extra:reset-row-001'});
+ const value=s.result('103-001-1');
+ await act(async()=>s.edit('103-001-1',{...value,lines:[{...value.lines[0],actual:4},{id:'extra:reset-row-001',sku:'EXTRA',barcode:'',actual:1,notes:''}],notes:'clear me',photoLines:{'photo-reset-task':'extra:reset-row-001'}}));
+ await act(async()=>{await new Promise(resolve=>setTimeout(resolve,750));});
+ const confirm=vi.spyOn(window,'confirm').mockReturnValue(true);
+ try {await click('一键全相符 (正常)');await act(async()=>{await new Promise(resolve=>setTimeout(resolve,750));});}
+ finally {confirm.mockRestore();}
+ expect(mock.saveResult.mock.calls.at(-1)[3]).toMatchObject({completed:true,notes:'',photoLines:{},ignoredPhotoIds:['photo-reset-task'],lines:[expect.objectContaining({sku:'SKU1',actual:5})]});
+ expect(task.photos).toHaveLength(1);expect(container.querySelector('img[src*="photo-reset-task"]')).toBeNull();
 });

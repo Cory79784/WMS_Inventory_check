@@ -2,7 +2,7 @@ import ExcelJS from 'exceljs';
 import type { ExportScope, HallId, InspectionExportRow } from '../types';
 import { exportText, exportNote, type ExportLanguage } from './exportLanguage';
 
-interface ExportPhoto {
+export interface ExportPhoto {
   base64: string;
   extension: 'jpeg' | 'png' | 'gif';
   width: number;
@@ -121,14 +121,19 @@ export async function buildInspectionWorkbook(
 }
 
 async function loadOriginalPhoto(key: string): Promise<ExportPhoto> {
-  const response = await fetch(`/api/inventory/inspection/photo?key=${encodeURIComponent(key)}`);
+  return loadExportPhoto(`/api/inventory/inspection/photo?key=${encodeURIComponent(key)}`);
+}
+
+export async function loadExportPhoto(url: string, allowWebp = false): Promise<ExportPhoto> {
+  const response = await fetch(url);
   if (!response.ok) throw new Error(`照片下载失败 (${response.status})，未生成不完整的导出文件`);
   const blob = await response.blob();
   const bytes = new Uint8Array(await blob.arrayBuffer());
   const extension = bytes[0] === 0xff && bytes[1] === 0xd8 ? 'jpeg'
     : bytes[0] === 0x89 && bytes[1] === 0x50 ? 'png'
     : bytes[0] === 0x47 && bytes[1] === 0x49 ? 'gif' : null;
-  if (!extension) throw new Error('Excel 图片嵌入仅支持 JPEG/PNG/GIF；原图未转换，请使用受支持的照片格式');
+  const webp=bytes[0]===0x52&&bytes[1]===0x49&&bytes[8]===0x57&&bytes[9]===0x45;
+  if (!extension && !(allowWebp&&webp)) throw new Error('Excel 图片嵌入仅支持 JPEG/PNG/GIF；原图未转换，请使用受支持的照片格式');
   const base64 = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
@@ -141,6 +146,11 @@ async function loadOriginalPhoto(key: string): Promise<ExportPhoto> {
     img.onerror = () => reject(new Error('照片格式无法读取'));
     img.src = base64;
   });
+  if (!extension) {
+    const canvas=document.createElement('canvas');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;
+    const context=canvas.getContext('2d');if(!context) throw new Error('PHOTO_CONVERSION_FAILED');context.drawImage(image,0,0);
+    return {base64:canvas.toDataURL('image/png'),extension:'png',width:image.naturalWidth,height:image.naturalHeight};
+  }
   return { base64, extension, width: image.naturalWidth, height: image.naturalHeight };
 }
 

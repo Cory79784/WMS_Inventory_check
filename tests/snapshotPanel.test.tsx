@@ -31,9 +31,9 @@ it('loads on expansion, previews folded locations, exports all changes despite p
  await click('去核查（当前 WMS）');expect(inspect).toHaveBeenCalledWith('A');
  const input=container.querySelector('input')!;
  await act(async()=>{Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value')!.set!.call(input,'A');input.dispatchEvent(new window.Event('input',{bubbles:true}));});
- await click('导出全部快照变动');expect(mocks.download).toHaveBeenCalledWith(result,'de');
+ await click('WMS 账面快照变动表');expect(mocks.download).toHaveBeenCalledWith(result,'de');
  await act(async()=>{const select=container.querySelectorAll('select')[1];select.value='old';select.dispatchEvent(new window.Event('change',{bubbles:true}));});
- expect(container.querySelectorAll('details')).toHaveLength(1);expect(container.textContent).not.toContain('导出全部快照变动');
+ expect(container.querySelectorAll('details')).toHaveLength(1);expect(container.textContent).not.toContain('WMS 账面快照变动表');
 });
 it('does not allow historical comparison to change the active WMS during review',async()=>{
  const inspect=await mount('different-active');await expand();await click('查看变动库位');await click('去核查（当前 WMS）');expect(inspect).not.toHaveBeenCalled();
