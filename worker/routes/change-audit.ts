@@ -1,3 +1,4 @@
+import { decodeInspectionNotes } from '../../src/utils/inspectionNotes';
 import { isAuditManager, managerSession } from '../changeAuditAccess';
 import { exportChangeAudit } from './change-audit-export';
 import type { Env } from '../types';
@@ -131,7 +132,7 @@ export async function handleChangeAudit(request: Request, env: Env): Promise<Res
             if(!changed.meta.changes) throw new ApiError(409,'PUBLICATION_CONFLICT');
             return reply({lifecycle:input.status,publicationRevision:input.revision+1});
         }
-        if(state.status==='DELETED' && !(manager && (['export','task','photo'].includes(action || '') && request.method==='GET'))) throw new ApiError(410,'TASK_UNAVAILABLE');
+        if(state.status==='DELETED' && !(manager && (['export','task','photo','inspection-reference'].includes(action || '') && request.method==='GET'))) throw new ApiError(410,'TASK_UNAVAILABLE');
         if(!manager && state.status!=='PUBLISHED') throw new ApiError(410,'TASK_UNAVAILABLE');
         if (action === 'status' && request.method === 'GET') {
             const counts=await env.DB.prepare('SELECT COUNT(*) AS n,COALESCE(SUM(revision),0) AS rev FROM change_audit_results WHERE task_id=?').bind(id).first<{n:number;rev:number}>();
@@ -144,6 +145,19 @@ export async function handleChangeAudit(request: Request, env: Env): Promise<Res
             return reply({results:Object.fromEntries(results.results.map(r=>[r.location_code,{...JSON.parse(r.result_json),revision:r.revision,savedAt:r.saved_at}])),photos:photos.results});
         }
         const plan = JSON.parse(row.plan_json) as AuditPlan;
+        if(action==='inspection-reference' && request.method==='GET') {
+            const location=url.searchParams.get('location');
+            need(plan.targets.some(t=>t.location===location),'INVALID_LOCATION');
+            // Exact hall and frozen new version only. No lookup of another hall or an older inspection.
+            const rows=await env.DB.prepare(`SELECT si.id,COALESCE(si.sku,'') AS sku,COALESCE(si.barcode,'') AS barcode,
+                si.system_qty AS systemQty,si.actual_qty AS actualQty,si.difference_qty AS differenceQty,
+                si.discrepancy_type AS discrepancyType,si.notes
+                FROM sku_inspections si JOIN location_inspections li ON li.inspection_id=si.inspection_id
+                WHERE li.hall_id=? AND li.reference_import_id=? AND UPPER(TRIM(li.location_code))=? ORDER BY si.id`)
+                .bind(hall,row.new_import_id,location).all<{id:string;sku:string;barcode:string;systemQty:number;actualQty:number;differenceQty:number;discrepancyType:string|null;notes:string|null}>();
+            return reply({referenceImportId:row.new_import_id,versionNumber:plan.comparison.newVersion.versionNumber,
+                rows:rows.results.map(r=>({...r,...decodeInspectionNotes(r.notes)}))});
+        }
         if (action === 'export' && request.method === 'GET') { requireManager(); return exportChangeAudit(request, env, row, plan); }
         if (action === 'task' && request.method === 'GET') {
             const results = await env.DB.prepare('SELECT location_code,result_json,revision,saved_at FROM change_audit_results WHERE task_id=?').bind(id).all<{

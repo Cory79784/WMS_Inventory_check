@@ -2,13 +2,13 @@ import React,{act} from 'react';
 import {beforeAll,beforeEach,afterEach,it,expect,vi} from 'vitest';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),{JSDOM}=require('jsdom');
-const mock=vi.hoisted(()=>({managerStatus:vi.fn().mockResolvedValue({manager:true,configured:true}),loadTask:vi.fn(),listTasks:vi.fn(),saveResult:vi.fn(),taskStatus:vi.fn(),uploadPhoto:vi.fn(),fetchVersions:vi.fn(),downloadTask:vi.fn().mockResolvedValue({})}));
+const mock=vi.hoisted(()=>({loadInspectionReference:vi.fn(),managerStatus:vi.fn().mockResolvedValue({manager:true,configured:true}),loadTask:vi.fn(),listTasks:vi.fn(),saveResult:vi.fn(),taskStatus:vi.fn(),uploadPhoto:vi.fn(),fetchVersions:vi.fn(),downloadTask:vi.fn().mockResolvedValue({})}));
 vi.mock('../src/changeAudit/api',async()=>({...await vi.importActual('../src/changeAudit/api'),...mock}));
 vi.mock('../src/changeAudit/taskExport',()=>({downloadTaskResults:mock.downloadTask}));
 vi.mock('../src/services/snapshotCompare',()=>({fetchSnapshotVersions:mock.fetchVersions}));
 import type {AuditTask} from '../src/changeAudit/model';
 let root:any,container:HTMLDivElement,Page:any,createRoot:any,number=0;
-const fixture=():AuditTask=>({id:`ui-task-${++number}`,hall:'H1',createdAt:'2026-10-19',stale:false,photos:[],results:{},plan:{comparison:{oldVersion:{versionNumber:1},newVersion:{versionNumber:2}} as any,config:{startRack:null,startEnd:'low',pairs:[]},route:['103-001-1','104-001-1'],special:['REI-14'],targets:[
+const fixture=():AuditTask=>({id:`ui-task-${++number}`,hall:'H1',createdAt:'2026-10-19',stale:false,photos:[],results:{},plan:{comparison:{oldVersion:{versionNumber:1},newVersion:{versionNumber:2,importId:'new'}} as any,config:{startRack:null,startEnd:'low',pairs:[]},route:['103-001-1','104-001-1'],special:['REI-14'],targets:[
  {location:'103-001-1',category:'CHANGED',skus:[{sku:'SKU1',barcode:'00001',customer:'C1',name:'原文商品',qty:5}],risks:[{kind:'multi',params:{count:2}}],changes:[]},
  {location:'104-001-1',category:'EMPTIED_LOCATION',skus:[{sku:'EMPTY',barcode:'',customer:'',name:'',qty:0}],risks:[],changes:[]},
  {location:'REI-14',category:'NEW_LOCATION',skus:[],risks:[],changes:[]}
@@ -18,10 +18,11 @@ beforeAll(async()=>{
  const dom=new JSDOM('<!doctype html><html><body></body></html>',{url:'https://audit.test'});
  Object.assign(globalThis,{window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,HTMLInputElement:dom.window.HTMLInputElement,localStorage:dom.window.localStorage,sessionStorage:dom.window.sessionStorage,IS_REACT_ACT_ENVIRONMENT:true});
  Object.defineProperty(globalThis,'navigator',{configurable:true,value:dom.window.navigator});
+ window.scrollTo=vi.fn();
  createRoot=(await import('react-dom/client')).createRoot;Page=(await import('../src/pages/ChangeAuditPage')).ChangeAuditPage;
 });
 beforeEach(async()=>{
- vi.clearAllMocks();localStorage.clear();sessionStorage.clear();task=fixture();localStorage.setItem('wms-change-audit-selected:H1',task.id);
+ vi.clearAllMocks();mock.loadInspectionReference.mockResolvedValue({referenceImportId:'new',versionNumber:2,rows:[]});localStorage.clear();sessionStorage.clear();task=fixture();localStorage.setItem('wms-change-audit-selected:H1',task.id);
  mock.loadTask.mockResolvedValue(task);mock.listTasks.mockResolvedValue({tasks:[{id:task.id,createdAt:'2026-10-19',oldId:'old',newId:'new'}],activeImportId:'new'});
  mock.fetchVersions.mockResolvedValue({versions:[{importId:'new',versionNumber:2},{importId:'old',versionNumber:1}],activeImportId:'new'});
  mock.saveResult.mockImplementation(async(_h,_id,_location,data)=>({...data,revision:data.revision+1,savedAt:'2026-10-19T00:00:00Z'}));mock.taskStatus.mockResolvedValue({stale:false});
@@ -148,4 +149,51 @@ it('returns to the task list on revocation while keeping an unsent draft quarant
  expect(container.querySelector('h2.font-mono')).toBeNull();expect(container.textContent).toContain('任务已撤回');
  expect(localStorage.getItem('wms-change-audit-selected:H1')).toBe('');expect(s.dirty).toBe(true);
  expect(localStorage.getItem(s.key)).toContain('offline draft');
+});
+it('puts the handheld operation first after selecting a task, with task controls, version and route below it',async()=>{
+ await act(async()=>root.unmount());
+ Object.defineProperty(navigator,'userAgent',{configurable:true,value:'Android PDA Chrome'});
+ mock.managerStatus.mockResolvedValue({manager:false,configured:true});
+ root=createRoot(container);await act(async()=>root.render(<Page currentHall="H1"/>));
+ const physical=container.querySelector('h2.font-mono')!,controls=container.querySelector('[data-audit-controls]')!;
+ const scanner=input('扫描/输入目标库位'),route=Array.from(container.querySelectorAll('details')).find(d=>d.querySelector('summary')?.textContent?.startsWith('路线 ·'))!;
+ expect(physical.compareDocumentPosition(controls) & window.Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(physical.compareDocumentPosition(scanner) & window.Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(physical.compareDocumentPosition(route) & window.Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(button('上一目标').compareDocumentPosition(physical) & window.Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(container.textContent).not.toContain('蛇形');expect(container.textContent).not.toContain('顺路查看外观');
+ expect(window.scrollTo).toHaveBeenCalledWith({top:0,left:0,behavior:'auto'});expect(scanner.inputMode).toBe('none');
+ Object.defineProperty(navigator,'userAgent',{configurable:true,value:'Desktop Chrome'});mock.managerStatus.mockResolvedValue({manager:true,configured:true});
+});
+it('shows original shortages and surplus as read-only reference beside saved task status, never auto-confirming counts',async()=>{
+ await act(async()=>root.unmount());
+ mock.loadInspectionReference.mockResolvedValue({referenceImportId:'new',versionNumber:2,rows:[
+  {id:'source-short',sku:'SKU1',barcode:'00001',systemQty:5,actualQty:2,differenceQty:-3,discrepancyType:'SHORTAGE',notes:'original',isReturn:false,returnCode:''},
+  {id:'source-extra',sku:'EXTRA',barcode:'',systemQty:0,actualQty:1,differenceQty:1,discrepancyType:'SURPLUS',notes:'',isReturn:false,returnCode:''},
+ ]});
+ // A fresh task ID avoids reusing a reference cache from the earlier render.
+ task.id+='-references';localStorage.setItem('wms-change-audit-selected:H1',task.id);localStorage.setItem(`wms-change-audit-location:${task.id}`,'103-001-1');mock.listTasks.mockResolvedValue({tasks:[{id:task.id}],activeImportId:'new'});
+ task.results['103-001-1']={lines:[{id:'book:SKU1',sku:'SKU1',barcode:'00001',actual:4,notes:'task only'}],notes:'',emptyConfirmed:false,completed:true,revision:1,savedAt:'2026-10-19T00:00:00Z'};
+ root=createRoot(container);await act(async()=>root.render(<Page currentHall="H1"/>));
+ const reference=container.querySelector('[data-original-reference]')!;
+ expect(reference.textContent).toContain('原库位核查参考 · V2');expect(reference.textContent).toContain('少货 3');
+ expect(container.textContent).toContain('少货 1');expect(container.textContent).toContain('原核查额外货物（参考）');expect(container.textContent).toContain('多货 +1');
+ expect(task.results['103-001-1'].lines[0].actual).toBe(4);expect(mock.saveResult).not.toHaveBeenCalled();
+ mock.loadInspectionReference.mockResolvedValue({referenceImportId:'new',versionNumber:2,rows:[]});
+ await click('下一个未完成目标');expect(container.textContent).not.toContain('少货 3');
+ expect(mock.loadInspectionReference).toHaveBeenCalledWith('H1',task.id,'104-001-1',expect.any(AbortSignal));
+});
+it('keeps handheld task selection first until a task is selected and keeps expired-task warnings above operations',async()=>{
+ await act(async()=>root.unmount());localStorage.removeItem('wms-change-audit-selected:H1');
+ Object.defineProperty(navigator,'userAgent',{configurable:true,value:'Android PDA Chrome'});mock.managerStatus.mockResolvedValue({manager:false,configured:true});
+ root=createRoot(container);await act(async()=>root.render(<Page currentHall="H1"/>));
+ expect(container.querySelector('[data-audit-controls]')).not.toBeNull();expect(container.querySelector('[data-audit-workspace]')).toBeNull();
+ task.stale=true;
+ const selector=container.querySelector('select[aria-label="恢复已保存任务（最近 100 个）"]') as HTMLSelectElement;
+ await act(async()=>{selector.value=task.id;selector.dispatchEvent(new window.Event('change',{bubbles:true}));});
+ const warning=Array.from(container.querySelectorAll('[role="alert"]')).find(p=>p.textContent?.includes('任务参考版本已过期'))!;
+ const physical=container.querySelector('h2.font-mono')!;
+ expect(warning.compareDocumentPosition(physical) & window.Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(container.querySelector('fieldset')?.disabled).toBe(true);expect(mock.saveResult).not.toHaveBeenCalled();
+ Object.defineProperty(navigator,'userAgent',{configurable:true,value:'Desktop Chrome'});mock.managerStatus.mockResolvedValue({manager:true,configured:true});
 });

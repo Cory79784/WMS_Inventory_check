@@ -1,5 +1,6 @@
 // Namespaced, additive schema: never writes original inspection tables.
 export const CHANGE_AUDIT_SCHEMA = [
+    `CREATE INDEX IF NOT EXISTS idx_insp_reference_location_normalized ON location_inspections(hall_id,reference_import_id,UPPER(TRIM(location_code)))`,
     `CREATE TABLE IF NOT EXISTS change_audit_publications (
  task_id TEXT PRIMARY KEY,status TEXT NOT NULL DEFAULT 'DRAFT' CHECK(status IN ('DRAFT','PUBLISHED','WITHDRAWN','DELETED')),
  revision INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT (datetime('now','utc')))`,
