@@ -1,7 +1,7 @@
 import { putPhotoDraft, readPhotoDrafts, deletePhotoDraft } from './photoDrafts';
 import { blankResult } from './model';
-import type { AuditResult, AuditTask } from './model';
-import { AuditError, saveResult, taskStatus, uploadPhoto, loadProgress } from './api';
+import type { AuditResult, AuditTask, InspectionTaskBase } from './model';
+import { AuditError, saveResult, taskStatus, uploadPhoto, loadProgress, photoUrl } from './api';
 export interface Draft {
     value: AuditResult;
     dirty: boolean;
@@ -18,7 +18,13 @@ export interface Upload {
     status: 'uploading' | 'failed' | 'saved';
     error: string;
 }
-export class AuditSession {
+export interface InspectionTransport {
+    saveResult:typeof saveResult;uploadPhoto:typeof uploadPhoto;loadProgress:typeof loadProgress;
+    taskStatus:(hall:string,id:string)=>Promise<{stale:boolean;lifecycle?:AuditTask['lifecycle'];publicationRevision?:number;resultStamp?:string;canEdit?:boolean}>;
+    photoUrl:typeof photoUrl;
+}
+const defaultTransport:InspectionTransport={saveResult,uploadPhoto,loadProgress,taskStatus,photoUrl};
+export class AuditSession<T extends InspectionTaskBase = AuditTask> {
     private listeners = new Set<() => void>();
     private timers = new Map<string, ReturnType<typeof setTimeout>>();
     private tick = 0;
@@ -32,7 +38,7 @@ export class AuditSession {
     storageError = false;
     unavailable = false;
     private draftPublication = 0;
-    constructor(public task: AuditTask) {
+    constructor(public task: T, private transport:InspectionTransport = defaultTransport) {
         this.draftPublication=task.publicationRevision || 0;
         try {
             const envelope = JSON.parse(localStorage.getItem(this.key) || '{}');
@@ -50,7 +56,7 @@ export class AuditSession {
                     continue;
                 const conflict = (server?.revision || 0) !== value.revision;
                 this.drafts.set(location, { value, dirty: true, saving: false, error: conflict ? 'REVISION_CONFLICT' : '', sequence: 0 });
-                if (!conflict && !task.stale && !this.unavailable)
+                if (!conflict && !task.stale && task.canEdit!==false && !this.unavailable)
                     this.schedule(location);
             }
         }
@@ -58,7 +64,7 @@ export class AuditSession {
             this.storageError = true;
         }
         if (globalThis.indexedDB)
-            void readPhotoDrafts(task.id).then(photos => {
+            void readPhotoDrafts(this.photoNamespace).then(photos => {
                 for (const photo of photos) {
                     if (this.task.photos.some(p => p.id === photo.id)) {
                         void deletePhotoDraft(photo.id).catch(() => { });
@@ -71,7 +77,9 @@ export class AuditSession {
                 this.emit();
             }).catch(() => { this.storageError = true; this.emit(); });
     }
-    get key() { return `wms-change-audit-drafts:${this.task.id}`; }
+    get photoNamespace() {return this.task.kind==='SKU' ? `sku-count:${this.task.id}` : this.task.id;}
+    get key() { return this.task.kind==='SKU' ? `wms-sku-count-drafts:${this.task.id}` : `wms-change-audit-drafts:${this.task.id}`; }
+    photoUrl(id:string) {return this.transport.photoUrl(this.task.hall,this.task.id,id);}
     subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
     snapshot = () => this.tick;
     private emit() { this.tick++; this.listeners.forEach(listener => listener()); }
@@ -90,7 +98,7 @@ export class AuditSession {
         return this.drafts.get(location)?.value || this.task.results[location] || blankResult(this.task.plan.targets.find(t => t.location === location)!);
     }
     edit(location: string, value: AuditResult) {
-        if (this.task.stale || this.unavailable || this.task.lifecycle==='WITHDRAWN' || this.task.lifecycle==='DELETED')
+        if (this.task.canEdit===false || this.task.stale || this.unavailable || this.task.lifecycle==='WITHDRAWN' || this.task.lifecycle==='DELETED')
             return;
         const old = this.drafts.get(location);
         this.drafts.set(location, { value: { ...value, revision: old?.value.revision ?? this.task.results[location]?.revision ?? 0 }, dirty: true, saving: old?.saving || false, error: old?.error === 'REVISION_CONFLICT' ? old.error : '', sequence: (old?.sequence || 0) + 1 });
@@ -104,14 +112,14 @@ export class AuditSession {
     }
     async flush(location: string) {
         const draft = this.drafts.get(location);
-        if (!draft || !draft.dirty || draft.saving || draft.error === 'REVISION_CONFLICT' || this.task.stale || this.unavailable || this.task.lifecycle==='WITHDRAWN' || this.task.lifecycle==='DELETED')
+        if (!draft || !draft.dirty || draft.saving || draft.error === 'REVISION_CONFLICT' || this.task.canEdit===false || this.task.stale || this.unavailable || this.task.lifecycle==='WITHDRAWN' || this.task.lifecycle==='DELETED')
             return;
         draft.saving = true;
         draft.error = '';
         const sequence = draft.sequence, value = structuredClone(draft.value);
         this.emit();
         try {
-            const saved = await saveResult(this.task.hall, this.task.id, location, value, this.task.publicationRevision || 0);
+            const saved = await this.transport.saveResult(this.task.hall, this.task.id, location, value, this.task.publicationRevision || 0);
             if (!saved.savedAt || saved.revision !== value.revision + 1 || JSON.stringify([saved.lines, saved.notes, saved.completed, saved.emptyConfirmed, saved.ignoredPhotoIds, saved.photoLines]) !== JSON.stringify([value.lines, value.notes, value.completed, value.emptyConfirmed, value.ignoredPhotoIds, value.photoLines]))
                 throw new Error('SAVE_NOT_CONFIRMED');
             this.task.results[location] = saved;
@@ -131,7 +139,7 @@ export class AuditSession {
             const latest = this.drafts.get(location)!;
             latest.saving = false;
             latest.error = error instanceof Error ? error.message : 'SAVE_FAILED';
-            if(error instanceof AuditError && ['TASK_UNAVAILABLE','PUBLICATION_CONFLICT','MANAGEMENT_REQUIRED'].includes(error.code)) this.unavailable=true;
+            if(error instanceof AuditError && ['TASK_UNAVAILABLE','PUBLICATION_CONFLICT','MANAGEMENT_REQUIRED','CLAIM_REQUIRED'].includes(error.code)) this.unavailable=true;
             if (error instanceof AuditError && error.code === 'STALE_VERSION')
                 this.task.stale = true;
             this.persist();
@@ -142,16 +150,16 @@ export class AuditSession {
     }
     async archiveDrafts() {
         if(this.busy) throw new Error('BUSY');
-        const archive=`wms-change-audit-quarantine:${this.task.hall}:${this.task.id}:${Date.now()}`;
+        const archive=`wms-${this.task.kind==='SKU'?'sku-count':'change-audit'}-quarantine:${this.task.hall}:${this.task.id}:${Date.now()}`;
         // Write the archive before removing the active queue. Quota failures leave it untouched.
         localStorage.setItem(archive,JSON.stringify({taskId:this.task.id,hall:this.task.hall,publicationRevision:this.draftPublication,drafts:Object.fromEntries([...this.drafts].filter(([,d])=>d.dirty).map(([code,d])=>[code,d.value]))}));
         if(globalThis.indexedDB) {
-            const photos=await readPhotoDrafts(this.task.id);
+            const photos=await readPhotoDrafts(this.photoNamespace);
             for(const photo of photos) await putPhotoDraft({...photo,taskId:archive});
         }
         this.timers.forEach(timer=>clearTimeout(timer));this.timers.clear();
         this.uploads.forEach(upload=>URL.revokeObjectURL(upload.url));this.uploads=[];this.drafts.clear();
-        localStorage.removeItem(this.key);sessions.delete(this.task.id);this.emit();
+        localStorage.removeItem(this.key);if(this.task.kind!=='SKU') sessions.delete(this.task.id);this.emit();
     }
     async discard() {
         if (this.busy)
@@ -166,7 +174,7 @@ export class AuditSession {
         this.uploads = [];
         this.drafts.clear();
         localStorage.removeItem(this.key);
-        sessions.delete(this.task.id);
+        if(this.task.kind!=='SKU') sessions.delete(this.task.id);
         this.emit();
     }
     async checkVersion(force = false) {
@@ -176,12 +184,14 @@ export class AuditSession {
         this.lastVersionCheck = Date.now();
         this.checking=true;
         try {
-            const status = await taskStatus(this.task.hall, this.task.id);
+            const status = await this.transport.taskStatus(this.task.hall, this.task.id);
             if(status.publicationRevision!==undefined && status.publicationRevision!==this.task.publicationRevision) this.unavailable=true;
+            if(status.canEdit===false && this.task.canEdit===true) this.unavailable=true;
+            if(status.canEdit!==undefined) this.task.canEdit=status.canEdit;
             this.task.stale = status.stale;
             if(status.lifecycle) this.task.lifecycle=status.lifecycle;
             if(!this.unavailable && status.resultStamp && status.resultStamp!==this.resultStamp && !this.busy) {
-                const progress=await loadProgress(this.task.hall,this.task.id);
+                const progress=await this.transport.loadProgress(this.task.hall,this.task.id);
                 for(const [code,draft] of this.drafts) {
                     if(!draft.dirty) this.drafts.delete(code);
                     else if((progress.results[code]?.revision || 0)!==draft.value.revision) draft.error='REVISION_CONFLICT';
@@ -194,7 +204,7 @@ export class AuditSession {
         finally {this.checking=false;}
     }
     async addPhoto(upload: Upload) {
-        if (this.task.stale || this.unavailable || this.task.lifecycle==='WITHDRAWN' || this.task.lifecycle==='DELETED')
+        if (this.task.canEdit===false || this.task.stale || this.unavailable || this.task.lifecycle==='WITHDRAWN' || this.task.lifecycle==='DELETED')
             return;
         if (!this.uploads.includes(upload))
             this.uploads.push(upload);
@@ -206,7 +216,7 @@ export class AuditSession {
         this.emit();
         try {
             try {
-                await putPhotoDraft({ ...upload, taskId: this.task.id, publicationRevision:this.task.publicationRevision || 0 });
+                await putPhotoDraft({ ...upload, taskId: this.photoNamespace, publicationRevision:this.task.publicationRevision || 0 });
             }
             catch {
                 this.photoStorageFailure = true;
@@ -217,7 +227,7 @@ export class AuditSession {
                 if (this.drafts.get(upload.location)?.dirty)
                     throw new Error('SAVE_LINES_FIRST');
             }
-            const saved = await uploadPhoto(this.task.hall, this.task.id, upload.location, upload.lineId, upload.id, upload.file, this.task.publicationRevision || 0);
+            const saved = await this.transport.uploadPhoto(this.task.hall, this.task.id, upload.location, upload.lineId, upload.id, upload.file, this.task.publicationRevision || 0);
             if (!saved.id)
                 throw new Error('SAVE_NOT_CONFIRMED');
             if (!this.task.photos.some(p => p.id === saved.id))
@@ -230,7 +240,7 @@ export class AuditSession {
         catch (error) {
             upload.status = 'failed';
             upload.error = error instanceof Error ? error.message : 'UPLOAD_FAILED';
-            if(error instanceof AuditError && ['TASK_UNAVAILABLE','PUBLICATION_CONFLICT','MANAGEMENT_REQUIRED'].includes(error.code)) this.unavailable=true;
+            if(error instanceof AuditError && ['TASK_UNAVAILABLE','PUBLICATION_CONFLICT','MANAGEMENT_REQUIRED','CLAIM_REQUIRED'].includes(error.code)) this.unavailable=true;
             if (error instanceof AuditError && error.code === 'STALE_VERSION')
                 this.task.stale = true;
         }

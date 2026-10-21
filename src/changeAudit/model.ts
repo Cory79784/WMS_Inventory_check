@@ -59,17 +59,16 @@ export interface AuditPhoto {
     location: string;
     lineId: string;
 }
-export interface AuditTask {
+export interface InspectionTaskBase {
+    kind?: 'SKU';
+    canEdit?: boolean;
     lifecycle?: 'DRAFT' | 'PUBLISHED' | 'WITHDRAWN' | 'DELETED';
     publicationRevision?: number;
-    id: string;
-    hall: string;
-    createdAt: string;
-    plan: AuditPlan;
-    results: Record<string, AuditResult>;
-    photos: AuditPhoto[];
-    stale: boolean;
+    id:string;hall:string;createdAt:string;
+    plan:{targets:Target[];route:string[];special:string[]};
+    results:Record<string,AuditResult>;photos:AuditPhoto[];stale:boolean;
 }
+export interface AuditTask extends InspectionTaskBase {plan:AuditPlan}
 export function blankResult(target: Target): AuditResult {
     return { lines: target.skus.map(s => ({ id: `book:${s.sku}`, sku: s.sku, barcode: s.barcode, actual: null, notes: '' })), notes: '', emptyConfirmed: false, completed: false, revision: 0 };
 }

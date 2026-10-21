@@ -1,3 +1,4 @@
+import { SKU_COUNT_SCHEMA } from '../skuCountSchema';
 import { CHANGE_AUDIT_SCHEMA } from '../changeAuditSchema';
 import { Env } from '../types';
 import { AUTH_SCHEMA } from '../auth/access';
@@ -188,6 +189,7 @@ export const SCHEMA_STATEMENTS = [
 
   `CREATE INDEX IF NOT EXISTS idx_photo_insp ON inspection_photos(inspection_id);`,
   ...CHANGE_AUDIT_SCHEMA,
+  ...SKU_COUNT_SCHEMA,
   // New links also retain the intended line while that SKU is still unchecked.
   `CREATE TABLE IF NOT EXISTS inspection_photo_lines (
     photo_id TEXT PRIMARY KEY,

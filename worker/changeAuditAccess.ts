@@ -21,7 +21,7 @@ export async function isAuditManager(request: Request, env: Env) {
   const [expiry,mac]=cookie.split('.');
   return !!mac && /^\d+$/.test(expiry) && Number(expiry)>Date.now() && Number(expiry)<=Date.now()+31*86400000 && await equal(mac,await signature(secret,expiry));
 }
-export async function managerSession(request: Request, env: Env) {
+export async function managerSession(request: Request, env: Env, path='/api/inventory/change-audit/') {
   const headers: Record<string,string>={'Cache-Control':'no-store'};
   if(request.method==='POST') {
     const secret=env.CHANGE_AUDIT_MANAGEMENT_KEY;
@@ -32,10 +32,10 @@ export async function managerSession(request: Request, env: Env) {
     let supplied='';try{supplied=JSON.parse(raw).key || '';}catch{}
     if(typeof supplied!=='string' || !await equal(supplied,secret)) return Response.json({error:'MANAGEMENT_DENIED'},{status:403,headers});
     const expiry=String(Date.now()+30*86400000);
-    headers['Set-Cookie']=`${COOKIE}=${expiry}.${await signature(secret,expiry)}; HttpOnly; Secure; SameSite=Strict; Path=/api/inventory/change-audit/; Max-Age=2592000`;
+    headers['Set-Cookie']=`${COOKIE}=${expiry}.${await signature(secret,expiry)}; HttpOnly; Secure; SameSite=Strict; Path=${path}; Max-Age=2592000`;
     return Response.json({manager:true},{headers});
   }
-  if(request.method==='DELETE') { headers['Set-Cookie']=`${COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/api/inventory/change-audit/; Max-Age=0`;return Response.json({manager:false},{headers}); }
+  if(request.method==='DELETE') { headers['Set-Cookie']=`${COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=${path}; Max-Age=0`;return Response.json({manager:false},{headers}); }
   if(request.method!=='GET') return new Response(null,{status:405});
   return Response.json({manager:await isAuditManager(request,env),configured:!!env.CHANGE_AUDIT_MANAGEMENT_KEY && env.CHANGE_AUDIT_MANAGEMENT_KEY.length>=24},{headers});
 }

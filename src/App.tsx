@@ -1,3 +1,4 @@
+import {hasSkuCountDrafts,flushSkuCountDrafts} from './skuCount/session';
 import React, { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import { registerLanguageSafety, languageSafety } from './i18n/safety';
 import { confirmPdaExit } from './utils/exitPrompt';
@@ -14,11 +15,12 @@ import { readSessionHall, rememberSessionHall } from './utils/sessionHall';
 import { hasChangeAuditDrafts, flushChangeAuditDrafts } from './changeAudit/session';
 import { isHandheldDevice } from './utils/device';
 
+const SkuCountPage=lazy(()=>import('./pages/SkuCountPage').then(module=>({default:module.SkuCountPage})));
 const ChangeAuditPage = lazy(() => import('./pages/ChangeAuditPage').then(module => ({default: module.ChangeAuditPage})));
 
-type View = 'inspect' | 'test' | 'import' | 'export' | 'arch' | 'changes';
+type View = 'inspect' | 'test' | 'import' | 'export' | 'arch' | 'changes' | 'sku';
 function readView(hall:HallId,files:boolean):View {
-  try { const value=window.localStorage.getItem(`wms-view:${hall}`); if(['inspect','changes','test','arch',...(files?['import','export']:[])].includes(value || '')) return value as View; }catch{} return 'inspect';
+  try { const value=window.localStorage.getItem(`wms-view:${hall}`); if(['inspect','changes','sku','test','arch',...(files?['import','export']:[])].includes(value || '')) return value as View; }catch{} return 'inspect';
 }
 export const App: React.FC = () => {
   const [storageProblem,setStorageProblem]=useState(()=>{try{window.localStorage.setItem('wms-storage-probe','1');window.localStorage.removeItem('wms-storage-probe');return false;}catch{return true;}});
@@ -29,7 +31,7 @@ export const App: React.FC = () => {
     document.title = t('siteTitle');
     document.documentElement.dir = 'ltr'; // Never mirror PDA controls.
     return registerLanguageSafety('cached-inspection-drafts', {
-      dirty: () => hasUnsavedInspectionDrafts() || hasChangeAuditDrafts() || storageProblemRef.current,
+      dirty: () => hasUnsavedInspectionDrafts() || hasChangeAuditDrafts() || hasSkuCountDrafts() || storageProblemRef.current,
       busy: () => false,
     });
   }, []);
@@ -48,10 +50,10 @@ export const App: React.FC = () => {
         return;
       }
       exiting = true;
-      flushInspectionDrafts();void flushChangeAuditDrafts();
+      flushInspectionDrafts();void flushChangeAuditDrafts();void flushSkuCountDrafts();
       window.history.back();
     };
-    const flush=()=>{flushInspectionDrafts();void flushChangeAuditDrafts();};
+    const flush=()=>{flushInspectionDrafts();void flushChangeAuditDrafts();void flushSkuCountDrafts();};
     const visibility=()=>{if(document.visibilityState==='hidden') flush();};
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       flush();
@@ -74,14 +76,15 @@ export const App: React.FC = () => {
   const [currentHall, setCurrentHall] = useState<HallId>(readSessionHall);
   const allowFileTransfer = !isHandheldDevice();
   const selectHall = (hall: HallId) => {
-    flushInspectionDrafts();void flushChangeAuditDrafts();
+    flushInspectionDrafts();void flushChangeAuditDrafts();void flushSkuCountDrafts();
     rememberSessionHall(hall);
     setCurrentHall(hall);
   };
-  const [activeView, setActiveView] = useState<'inspect' | 'test' | 'import' | 'export' | 'arch' | 'changes'> (() => readView(currentHall,allowFileTransfer));
+  const [activeView, setActiveView] = useState<'inspect' | 'test' | 'import' | 'export' | 'arch' | 'changes' | 'sku'> (() => readView(currentHall,allowFileTransfer));
   useEffect(()=>{setActiveView(readView(currentHall,allowFileTransfer));},[currentHall]);
-  useEffect(()=>{try {window.localStorage.setItem(`wms-view:${currentHall}`,activeView);}catch{setStorageProblem(true);} if(activeView==='changes') setAuditOpened(true);},[activeView]);
+  useEffect(()=>{try {window.localStorage.setItem(`wms-view:${currentHall}`,activeView);}catch{setStorageProblem(true);} if(activeView==='changes') setAuditOpened(true);if(activeView==='sku') setSkuOpened(true);},[activeView]);
 
+  const [skuOpened,setSkuOpened]=useState(activeView==='sku');
   const [auditOpened, setAuditOpened] = useState(activeView==='changes');
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
@@ -91,9 +94,9 @@ export const App: React.FC = () => {
         activeView={activeView}
         allowFileTransfer={allowFileTransfer}
         onSelectView={view => {
-          flushInspectionDrafts();void flushChangeAuditDrafts();
+          flushInspectionDrafts();void flushChangeAuditDrafts();void flushSkuCountDrafts();
           if (allowFileTransfer || (view !== 'import' && view !== 'export')) {
-            if(view==='changes') setAuditOpened(true);
+            if(view==='changes') setAuditOpened(true);if(view==='sku')setSkuOpened(true);
             try { window.localStorage.setItem(`wms-view:${currentHall}`,view); } catch { setStorageProblem(true); }
             setActiveView(view);
           }
@@ -113,6 +116,7 @@ export const App: React.FC = () => {
         {allowFileTransfer && activeView === 'import' && <WMSImportPage currentHall={currentHall} />}
         {allowFileTransfer && activeView === 'export' && <InspectionExportPage currentHall={currentHall} />}
         {auditOpened && <div hidden={activeView!=='changes'}><Suspense fallback={<p className="p-4">{t('compareLoading')}</p>}><ChangeAuditPage key={currentHall} currentHall={currentHall} active={activeView==='changes'}/></Suspense></div>}
+        {skuOpened && <div hidden={activeView!=='sku'}><Suspense fallback={<p className="p-4">{t('compareLoading')}</p>}><SkuCountPage key={currentHall} currentHall={currentHall} active={activeView==='sku'}/></Suspense></div>}
         {activeView === 'test' && <DeviceTestPage />}
         {activeView === 'arch' && <ArchitecturePage />}
       </main>

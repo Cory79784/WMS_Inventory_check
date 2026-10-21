@@ -5,11 +5,11 @@ import {loadInspectionReference,type InspectionReference} from './api';
 import type {AuditTask,AuditLine} from './model';
 // One request per visited location, not per SKU. A short cache avoids repeated route jumps.
 const cache=new Map<string,{at:number;data:InspectionReference}>();
-export function useInspectionReference(task:AuditTask,location:string,active=true) {
-    const key=JSON.stringify([task.hall,task.id,task.plan.comparison.newVersion.importId,location]);
+export function useInspectionReference(task:AuditTask|null,location:string,active=true) {
+    const key=task?JSON.stringify([task.hall,task.id,task.plan.comparison.newVersion.importId,location]):'';
     const [data,setData]=useState<InspectionReference|null>(null),[error,setError]=useState(false),[attempt,setAttempt]=useState(0);
     useEffect(()=>{
-        if(!active) return;
+        if(!active || !task) return;
         const abort=new AbortController();
         setData(null);setError(false);
         const load=async(force=false)=>{

@@ -9,6 +9,7 @@ vi.mock('../src/pages/LocationInspectionPage', () => ({
 }));
 vi.mock('../src/pages/WMSImportPage', () => ({ WMSImportPage: () => <div>import-page</div> }));
 vi.mock('../src/pages/InspectionExportPage', () => ({ InspectionExportPage: () => <div>export-page</div> }));
+vi.mock('../src/pages/SkuCountPage',()=>({SkuCountPage:({currentHall}:any)=><div>sku-count-page:{currentHall}</div>}));
 vi.mock('../src/pages/ChangeAuditPage', () => ({ ChangeAuditPage: () => <div>change-audit-page</div> }));
 vi.mock('../src/pages/DeviceTestPage', () => ({ DeviceTestPage: () => <div>device-test</div> }));
 vi.mock('../src/pages/ArchitecturePage', () => ({ ArchitecturePage: () => <div>architecture</div> }));
@@ -69,6 +70,14 @@ describe('Tab hall selection and handheld presentation', () => {
     await click('H2');expect(container.textContent).toContain('change-audit-page');
     window.sessionStorage.clear();await remount();expect(container.textContent).toContain('change-audit-page');expect(window.localStorage.getItem('wms-active-hall')).toBe('H2');
     await click('库位核查');window.sessionStorage.clear();await remount();expect(container.querySelector('[data-testid="inspection"]')?.textContent).toBe('H2:true');
+  });
+  it('opens SKU counting on PDA and persists its tab separately per hall',async()=>{
+    Object.defineProperty(navigator,'userAgent',{configurable:true,value:'Android PDA Chrome'});
+    await render();await click('H2');await click('SKU盘点');expect(container.textContent).toContain('sku-count-page:H2');
+    window.sessionStorage.clear();await remount();expect(container.textContent).toContain('sku-count-page:H2');
+    await click('H1');expect(container.querySelector('[data-testid="inspection"]')?.textContent).toBe('H1:false');
+    await click('H2');expect(container.textContent).toContain('sku-count-page:H2');
+    expect(button('WMS 导入')).toBeUndefined();expect(button('导出')).toBeUndefined();
   });
   it('validates stored hall IDs and clears the selection on explicit exit', async () => {
     const { readSessionHall, clearSessionHall } = await import('../src/utils/sessionHall');
