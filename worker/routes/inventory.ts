@@ -1,3 +1,4 @@
+import { handleSkuCount } from './sku-count';
 import { handleChangeAudit } from './change-audit';
 import { handleSnapshotComparison } from './snapshot-compare';
 import { Env, AuthUser } from '../types';
@@ -32,6 +33,7 @@ export async function handleInventoryRoutes(request: Request, env: Env): Promise
   const url = new URL(request.url);
   const path = url.pathname;
 
+  if (path.startsWith('/api/inventory/sku-count/')) return handleSkuCount(request, env);
   if (path.startsWith('/api/inventory/change-audit/')) return handleChangeAudit(request, env);
 
   // Public attribution; no login or session is required.

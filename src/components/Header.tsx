@@ -9,8 +9,8 @@ interface HeaderProps {
   allowFileTransfer?: boolean;
   currentHall: HallId;
   onSelectHall: (hall: HallId) => void;
-  activeView: 'inspect' | 'test' | 'import' | 'export' | 'arch' | 'changes';
-  onSelectView: (view: 'inspect' | 'test' | 'import' | 'export' | 'arch' | 'changes') => void;
+  activeView: 'inspect' | 'test' | 'import' | 'export' | 'arch' | 'changes' | 'sku';
+  onSelectView: (view: 'inspect' | 'test' | 'import' | 'export' | 'arch' | 'changes' | 'sku') => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -68,6 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button type="button" onClick={() => onSelectView('changes')} className={`px-2.5 py-1.5 rounded-md font-medium flex items-center gap-1 ${activeView==='changes'?'bg-blue-600 text-white':'text-slate-300 hover:text-white'}`}>
             <Route className="w-3.5 h-3.5" />{t('auditMenu')}
           </button>
+          <button type="button" onClick={()=>onSelectView('sku')} className={`px-2.5 py-1.5 rounded-md font-medium flex items-center gap-1 ${activeView==='sku'?'bg-blue-600 text-white':'text-slate-300 hover:text-white'}`}><ClipboardCheck className="w-3.5 h-3.5"/>{t('skuMenu')}</button>
           {allowFileTransfer && <>
           <button
             type="button"

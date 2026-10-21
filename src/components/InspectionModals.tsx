@@ -29,6 +29,7 @@ export function InspectionShortageModal({ shortageModalSku, setShortageModalSku,
     setShortageReturnCode: (value: string) => void;
     handleSubmitShortage: () => void;
     buttonsOnly?: boolean;
+    photoRequired?: boolean;
 }) {
     return (<div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3">
           <div className="bg-white rounded-2xl w-full max-w-sm p-4 space-y-3 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
@@ -72,7 +73,7 @@ export function InspectionShortageModal({ shortageModalSku, setShortageModalSku,
           </div>
         </div>);
 }
-export function InspectionSurplusModal({ surplusMode, setSurplusMode, surplusSkuInput, setSurplusSkuInput, surplusBarcodeInput, setSurplusBarcodeInput, surplusQtyInput, setSurplusQtyInput, surplusNotesInput, setSurplusNotesInput, surplusIsReturn, setSurplusIsReturn, surplusReturnCode, setSurplusReturnCode, surplusPhotoFile, surplusPhotoPreview, handleSurplusPhotoChange, uploadingSurplusPhoto, surplusProgress, surplusUploadFailed, setShowSurplusModal, handleSubmitSurplus, manualInput, setManualInput, virtualKeyboard, surplusSkuRef, surplusBarcodeRef, surplusFileInputRef, buttonsOnly = false }: {
+export function InspectionSurplusModal({ surplusMode, setSurplusMode, surplusSkuInput, setSurplusSkuInput, surplusBarcodeInput, setSurplusBarcodeInput, surplusQtyInput, setSurplusQtyInput, surplusNotesInput, setSurplusNotesInput, surplusIsReturn, setSurplusIsReturn, surplusReturnCode, setSurplusReturnCode, surplusPhotoFile, surplusPhotoPreview, handleSurplusPhotoChange, uploadingSurplusPhoto, surplusProgress, surplusUploadFailed, setShowSurplusModal, handleSubmitSurplus, manualInput, setManualInput, virtualKeyboard, surplusSkuRef, surplusBarcodeRef, surplusFileInputRef, buttonsOnly = false, photoRequired = surplusMode === 'NO_SKU' }: {
     surplusMode: 'SKU' | 'BARCODE' | 'NO_SKU';
     setSurplusMode: (value: 'SKU' | 'BARCODE' | 'NO_SKU') => void;
     surplusSkuInput: string;
@@ -102,6 +103,7 @@ export function InspectionSurplusModal({ surplusMode, setSurplusMode, surplusSku
     surplusBarcodeRef: RefObject<HTMLInputElement>;
     surplusFileInputRef: RefObject<HTMLInputElement>;
     buttonsOnly?: boolean;
+    photoRequired?: boolean;
 }) {
     return (<div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3">
           <div className="bg-white rounded-2xl w-full max-w-sm p-4 space-y-3 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
@@ -177,7 +179,7 @@ export function InspectionSurplusModal({ surplusMode, setSurplusMode, surplusSku
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                {surplusMode === 'NO_SKU' ? (<span className="text-red-600 font-bold">{t('photoRequired')}</span>) : (t('photoOptional'))}
+                {photoRequired ? (<span className="text-red-600 font-bold">{t('photoRequired')}</span>) : (t('photoOptional'))}
               </label>
               <input ref={surplusFileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => {
             if (e.target.files?.[0]) {
