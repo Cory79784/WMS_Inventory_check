@@ -116,7 +116,7 @@ export const App: React.FC = () => {
         {allowFileTransfer && activeView === 'import' && <WMSImportPage currentHall={currentHall} />}
         {allowFileTransfer && activeView === 'export' && <InspectionExportPage currentHall={currentHall} />}
         {auditOpened && <div hidden={activeView!=='changes'}><Suspense fallback={<p className="p-4">{t('compareLoading')}</p>}><ChangeAuditPage key={currentHall} currentHall={currentHall} active={activeView==='changes'}/></Suspense></div>}
-        {skuOpened && <div hidden={activeView!=='sku'}><Suspense fallback={<p className="p-4">{t('compareLoading')}</p>}><SkuCountPage key={currentHall} currentHall={currentHall} active={activeView==='sku'}/></Suspense></div>}
+        {skuOpened && <div hidden={activeView!=='sku'}><Suspense fallback={<p className="p-4">{t('compareLoading')}</p>}><SkuCountPage key={currentHall} currentHall={currentHall} onSelectHall={hall=>{try{localStorage.setItem(`wms-view:${hall}`,'sku');}catch{setStorageProblem(true);}selectHall(hall);}} active={activeView==='sku'}/></Suspense></div>}
         {activeView === 'test' && <DeviceTestPage />}
         {activeView === 'arch' && <ArchitecturePage />}
       </main>

@@ -1,5 +1,15 @@
 import type { TranslationKey } from './zh';
 export const ar: Record<TranslationKey, string> = {
+  skuSmallGoods: "البضائع الصغيرة (الطابق الثاني)",
+  skuAreaGroup: "منطقة الجرد",
+  skuReturnsExcluded: "منطقة المرتجعات المؤقتة، غير مشمولة بالجرد",
+  skuSourceRows: "يحتوي الملف على {rows} صف مخزون",
+  skuAreaSummary: "{rows} صف · {locations} موقع · {skus} SKU · الكمية {qty}",
+  skuShowMore: "عرض المزيد",
+  skuInvalidRow: "صف Excel رقم {row}: المنطقة أو الموقع أو SKU مفقود، أو المنطقة غير صالحة.",
+  skuInvalidQuantity: "صف Excel رقم {row}: يجب أن تكون الكمية عدداً صحيحاً غير سالب.",
+  skuAmbiguousLocation: "رمز الموقع موجود في أكثر من منطقة. اختر الموقع الكامل من المسار.",
+
   skuDeleteConfirm: "حذف وصول المنفذين إلى المهمة؟ تبقى النتائج المحفوظة للعرض على PC.",
   skuScopeEmptyConfirmed: "لا مخزون لـ SKU المختار",
   skuMenu: "جرد SKU",

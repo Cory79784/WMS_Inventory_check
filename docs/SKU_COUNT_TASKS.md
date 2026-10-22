@@ -40,3 +40,14 @@ The existing PDA scanner keyboard rules remain: `inputMode=none` by default, exp
 - No production migration, merge or deployment performed. Real PDA image capture/keyboard/browser termination, Cloudflare secrets and multi-device network behavior require acceptance testing.
 
 Validation record: 30 test files / 228 tests passed, plus successful Vite production build, Worker TypeScript and whitespace checks. Actual sample importer check: 87 rows, two SKUs, H1/H2/H3, SHA-256 retained; local read-only validation only.
+
+## Inventory area groups / 库区分组
+
+- SKU counting has its own area selector: H1, H2, H3, Small goods (second floor), then other imported areas. Selecting H1/H2/H3 also selects the corresponding application hall. Non-hall groups never change the original inspection or inventory-change scope.
+- Only `Halle1/2F`, `Halle2/2F`, and `Halle3/2F` (case-insensitive) form `SMALL_GOODS`. Other areas use a distinct `AREA:<UPPERCASE_SOURCE_AREA>` task partition. No inference is made from location prefixes or similar-looking area names such as Halle1, H2office, or Halle2-Shelves.
+- RT stock is accepted on import, explicitly listed as excluded, and never becomes a task target or contributes to completion. The task freezes RT rows for its selected SKUs as reference-only metadata, so they remain visible after reload. This is source stock, not an outstanding counting result.
+- Small-goods and other-area location keys include the original area. Identical physical location codes in different areas stay separate. Scanning a bare code jumps only when unique; otherwise select its full entry from the route.
+- Scope, selected task, location, and drafts retain independent storage keys. PDA discovers published area groups from the server; draft-only groups are visible only to managers. File import stays PC-only.
+- Existing H1/H2/H3 task keys and routes are unchanged. No schema migration is required: SKU task `hall_id` is already TEXT without a hall-only constraint, and optional plan metadata is additive. Original inspection, snapshots and inventory-change tables are untouched.
+
+SKU 盘点库区排序为 H1/H2/H3 → 二楼小货区 → 其他原始库区。二楼三个库区统一分组、原库区仍保留；RT 接受导入并明确列为未纳入盘点，选中 SKU 的 RT 来源记录随任务留档。相同库位码按库区隔离，不串数量和进度。手机/PDA 可选择已发布库区任务，不显示文件导入入口。无需数据库迁移。

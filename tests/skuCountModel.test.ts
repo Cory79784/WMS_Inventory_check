@@ -26,3 +26,21 @@ describe('SKU-count import and frozen task scope',()=>{
   expect(needsIdentityPhoto(target,{...extra,sku:'OTHER',actual:0})).toBe(false);
  });
 });
+
+it('accepts all named areas, groups only the three explicit second floors, and orders primary halls first',async()=>{
+ const {areaScope,orderedScopes,validScope}=await import('../src/skuCount/areas');
+ const areas=['RT','Halle3/2F','Halle1/2F','Halle2/2F','Halle2-Defective','Halle2-Shelves','D02','H2office','Halle1','WS','XH','NEW-ZONE'];
+ const imported=parseCountRows([['SKU编码','库区','库位','库位库存'],...areas.map(a=>['S',a,'L',1])]);
+ expect(imported).toHaveLength(areas.length);for(const area of ['Halle1/2F','Halle2/2F','Halle3/2F'])expect(areaScope(area)).toBe('SMALL_GOODS');
+ expect(areaScope('Halle1')).toBe('AREA:HALLE1');expect(validScope('RT')).toBe(false);expect(validScope('AREA:RT')).toBe(false);expect(validScope('AREA:H1')).toBe(false);
+ expect(orderedScopes(['AREA:XH','SMALL_GOODS','H3','AREA:D02','AREA:RT'])).toEqual(['H1','H2','H3','SMALL_GOODS','AREA:D02','AREA:XH']);
+ expect(()=>parseCountRows([['SKU编码','库区','库位','库位库存'],[],['S','','L',1]])).toThrow('INVALID_ROW:3');
+});
+it('keeps same-code locations in small-goods areas separate and preserves excluded RT evidence outside the route',()=>{
+ const rows=[row({hall:'Halle1/2F',location:'M-1',qty:2}),row({hall:'Halle2/2F',location:'M-1',qty:3}),row({hall:'RT',location:'RT-1',qty:7}),row({hall:'H1',location:'M-1',qty:99})];
+ const p=buildCountPlan(rows,'SMALL_GOODS',['000123'],'source.xlsx','a'.repeat(64));
+ expect(p.route).toEqual(['HALLE1/2F / M-1','HALLE2/2F / M-1']);expect(p.targets.map(t=>t.skus[0].qty)).toEqual([2,3]);expect(p.sourceRows).toBe(2);
+ expect(p.excludedReturns?.[0]).toMatchObject({hall:'RT',location:'RT-1',sku:'000123',qty:7});expect(p.locations?.[p.route[0]]).toEqual({area:'Halle1/2F',code:'M-1'});
+ expect(()=>buildCountPlan(rows,'AREA:RT',['000123'],'source.xlsx','a'.repeat(64))).toThrow('INVALID_SOURCE');
+ const other=buildCountPlan([row({hall:'WS'})],'AREA:WS',['000123'],'source.xlsx','a'.repeat(64));expect(other.route).toEqual(['WS / 107-002-1']);
+});

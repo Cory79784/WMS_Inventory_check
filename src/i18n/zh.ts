@@ -1,4 +1,14 @@
 export const zh = {
+  skuSmallGoods: "小货区（二楼）",
+  skuAreaGroup: "盘点库区",
+  skuReturnsExcluded: "退货暂存区，未纳入盘点",
+  skuSourceRows: "文件共 {rows} 条库存记录",
+  skuAreaSummary: "{rows} 条记录 · {locations} 个库位 · {skus} 个 SKU · 数量 {qty}",
+  skuShowMore: "显示更多",
+  skuInvalidRow: "Excel 第 {row} 行：库区、库位或 SKU 缺失，或库区格式无效。",
+  skuInvalidQuantity: "Excel 第 {row} 行：库存数量须为非负整数。",
+  skuAmbiguousLocation: "多个库区有相同库位，请从路线选择完整库位。",
+
   skuDeleteConfirm: "删除后执行端无法访问此任务，已保存结果保留供 PC 只读查看。确认删除？",
   skuScopeEmptyConfirmed: "所选 SKU 无货",
   skuMenu: "SKU盘点",

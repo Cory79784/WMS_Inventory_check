@@ -1,5 +1,15 @@
 import type { TranslationKey } from './zh';
 export const de: Record<TranslationKey, string> = {
+  skuSmallGoods: "Kleinteile (2. Etage)",
+  skuAreaGroup: "Inventurbereich",
+  skuReturnsExcluded: "Retourenpuffer, nicht im Zählumfang",
+  skuSourceRows: "Datei: {rows} Bestandszeilen",
+  skuAreaSummary: "{rows} Zeilen · {locations} Plätze · {skus} SKU · Menge {qty}",
+  skuShowMore: "Mehr anzeigen",
+  skuInvalidRow: "Excel-Zeile {row}: Bereich, Platz oder SKU fehlt bzw. Bereich ist ungültig.",
+  skuInvalidQuantity: "Excel-Zeile {row}: Bestandsmenge muss eine nichtnegative ganze Zahl sein.",
+  skuAmbiguousLocation: "Gleicher Platz in mehreren Bereichen. Vollständigen Platz in der Route wählen.",
+
   skuDeleteConfirm: "Aufgabe für Ausführende entfernen? Gespeicherte Ergebnisse bleiben am PC lesbar.",
   skuScopeEmptyConfirmed: "Gewählte SKU ohne Bestand",
   skuMenu: "SKU-Inventur",

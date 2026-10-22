@@ -79,3 +79,23 @@ it('keeps same-location tasks isolated and soft deletion retains read-only histo
  const history=await(await call('task',{manager:true})).json() as CountTask;expect(history.results['107-002-1'].completed).toBe(true);expect(history.canEdit).toBe(false);
  for(const table of ['inventory_imports','location_inspections','sku_inspections','change_audit_tasks','change_audit_results'])expect((await db.prepare(`SELECT COUNT(*) n FROM ${table}`).first())?.n).toBe(0);
 });
+it('publishes independent small-goods and arbitrary-area scopes, discovers them on PDA, and rejects RT tasks',async()=>{
+ const small='sku-task-small-001',zone='sku-task-zone-001';
+ const stock=[{...rows[0],hall:'Halle2/2F'},{...rows[0],hall:'Halle3/2F',qty:8},{...rows[0],hall:'RT',qty:4}];
+ expect((await call('tasks',{hall:'SMALL_GOODS',manager:true,method:'POST',data:{...payload,id:small,rows:stock,skus:['S1']}})).status).toBe(201);
+ expect((await call('task',{hall:'H1',manager:true,taskId:small})).status).toBe(404);
+ expect((await call('lifecycle',{hall:'SMALL_GOODS',taskId:small,manager:true,method:'POST',data:{status:'PUBLISHED',revision:0}})).status).toBe(200);
+ const frozen=await(await call('task',{hall:'SMALL_GOODS',taskId:small})).json() as CountTask;expect(frozen.plan.route).toHaveLength(2);expect(frozen.plan.excludedReturns?.[0].qty).toBe(4);expect(frozen.plan.sourceRows).toBe(2);
+ const scopes=await(await call('scopes')).json() as any;expect(scopes.scopes).toContain('SMALL_GOODS');
+ expect((await call('tasks',{hall:'AREA:WS',manager:true,method:'POST',data:{...payload,id:zone,rows:[{...rows[0],hall:'WS'}] ,skus:['S1']}})).status).toBe(201);
+ expect((await(await call('scopes')).json() as any).scopes).not.toContain('AREA:WS');
+ expect((await call('lifecycle',{hall:'AREA:WS',taskId:zone,manager:true,method:'POST',data:{status:'PUBLISHED',revision:0}})).status).toBe(200);
+ expect((await(await call('scopes')).json() as any).scopes).toContain('AREA:WS');
+ expect((await call('tasks',{hall:'AREA:RT',manager:true,method:'POST',data:{...payload,id:'sku-invalid-rt'}})).status).toBe(400);
+ expect((await call('claim',{hall:'SMALL_GOODS',taskId:small,device:A,method:'POST',data:{name:'Alice',revision:1}})).status).toBe(200);
+ const owned=await(await call('task',{hall:'SMALL_GOODS',taskId:small,device:A})).json() as CountTask;
+ const result=blankResult(owned.plan.targets[0]);result.lines[0].actual=2;result.completed=true;
+ expect((await call('save',{hall:'SMALL_GOODS',taskId:small,device:A,revision:2,method:'POST',data:result,extra:{location:owned.plan.route[0]}})).status).toBe(200);
+ expect((await call('save',{hall:'H1',taskId:small,device:A,revision:2,method:'POST',data:result})).status).toBe(404);
+ const progress=await(await call('progress',{hall:'SMALL_GOODS',taskId:small,device:A})).json() as any;expect(Object.keys(progress.results)).toEqual([owned.plan.route[0]]);
+});
