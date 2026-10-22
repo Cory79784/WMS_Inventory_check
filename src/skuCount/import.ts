@@ -9,11 +9,11 @@ export function parseCountRows(matrix:unknown[][]):CountRow[] {
   columns[field]=found[0] ?? -1;
  }
  if(['sku','hall','location','qty'].some(field=>columns[field]<0)) throw new Error('MISSING_HEADERS');
- return matrix.slice(1).filter(row=>row.some(value=>value!==''&&value!==null&&value!==undefined)).map((row,index)=>{
+ return matrix.slice(1).map((row,index)=>({row,index})).filter(({row})=>row.some(value=>value!==''&&value!==null&&value!==undefined)).map(({row,index})=>{
   const get=(field:string)=>String(row[columns[field]] ?? '').trim();
   const quantity=(field:string,required=false)=>{const raw=get(field);if(!raw && !required)return undefined;if(!/^\d+$/.test(raw)||!Number.isSafeInteger(Number(raw)))throw new Error(`INVALID_QUANTITY:${index+2}`);return Number(raw);};
-  const hall=get('hall').toUpperCase(),sku=get('sku'),location=get('location').toUpperCase();
-  if(!['H1','H2','H3'].includes(hall)||!sku||!location) throw new Error(`INVALID_ROW:${index+2}`);
+  const hall=get('hall'),sku=get('sku'),location=get('location').toUpperCase();
+  if(!hall||hall.length>100||/[\x00-\x1f]/.test(hall)||!sku||!location) throw new Error(`INVALID_ROW:${index+2}`);
   return {hall:hall as CountRow['hall'],sku,location,qty:quantity('qty',true)!,barcode:get('barcode'),eBarcode:get('eBarcode'),customer:get('customer'),name:get('name') || get('english'),availableQty:quantity('availableQty'),allocatedQty:quantity('allocatedQty'),frozenQty:quantity('frozenQty')};
  });
 }

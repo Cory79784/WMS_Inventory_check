@@ -3,7 +3,7 @@ import {beforeAll,beforeEach,afterEach,it,expect,vi} from 'vitest';
 import {createRequire} from 'node:module';
 import type {CountTask} from '../src/skuCount/model';
 const require=createRequire(import.meta.url),{JSDOM}=require('jsdom');
-const mocks=vi.hoisted(()=>({listCountTasks:vi.fn(),loadCountTask:vi.fn(),countManager:vi.fn(),countControl:vi.fn(),createCountTask:vi.fn(),readCountFile:vi.fn(),save:vi.fn(),upload:vi.fn(),status:vi.fn(),progress:vi.fn()}));
+const mocks=vi.hoisted(()=>({listCountScopes:vi.fn(),listCountTasks:vi.fn(),loadCountTask:vi.fn(),countManager:vi.fn(),countControl:vi.fn(),createCountTask:vi.fn(),readCountFile:vi.fn(),save:vi.fn(),upload:vi.fn(),status:vi.fn(),progress:vi.fn()}));
 vi.mock('../src/skuCount/api',async()=>({...await vi.importActual('../src/skuCount/api'),...mocks,countTransport:{saveResult:mocks.save,uploadPhoto:mocks.upload,taskStatus:mocks.status,loadProgress:mocks.progress,photoUrl:(_h:string,id:string,p:string)=>`/api/inventory/sku-count/photo?taskId=${id}&photoId=${p}`}}));
 vi.mock('../src/skuCount/import',async()=>({...await vi.importActual('../src/skuCount/import'),readCountFile:mocks.readCountFile}));
 let Page:any,root:any,createRoot:any,container:HTMLDivElement,task:CountTask,sequence=0;
@@ -15,7 +15,7 @@ beforeAll(async()=>{
  createRoot=(await import('react-dom/client')).createRoot;Page=(await import('../src/pages/SkuCountPage')).SkuCountPage;
 });
 beforeEach(async()=>{
- vi.clearAllMocks();localStorage.clear();task=fixture();localStorage.setItem('wms-sku-count-selected:H1',task.id);
+ vi.clearAllMocks();mocks.listCountScopes.mockResolvedValue({scopes:['H1','H2','H3','SMALL_GOODS','AREA:WS']});localStorage.clear();task=fixture();localStorage.setItem('wms-sku-count-selected:H1',task.id);
  Object.defineProperty(navigator,'userAgent',{configurable:true,value:'Android PDA Chrome'});
  mocks.countManager.mockResolvedValue({manager:false,configured:true});mocks.listCountTasks.mockImplementation(async()=>({tasks:[{id:task.id,name:task.name,lifecycle:task.lifecycle,claimedBy:task.claimedBy,completed:0,total:2}]}));mocks.loadCountTask.mockImplementation(async()=>structuredClone(task));
  mocks.save.mockImplementation(async(_h,_id,_loc,value)=>({...value,revision:value.revision+1,savedAt:'2026-10-21T00:00:00Z'}));mocks.upload.mockImplementation(async(_h,_id,location,lineId,id)=>({id,location,lineId}));mocks.status.mockResolvedValue({stale:false,publicationRevision:2,canEdit:true,lifecycle:'PUBLISHED'});
@@ -63,4 +63,20 @@ it('previews an Excel file on PC before creating a hall-scoped draft, never auto
  root=createRoot(container);await act(async()=>root.render(<Page currentHall="H1"/>));const file=new window.File(['test'],'sample.xlsx');
  await act(async()=>{const picker=input('导入 SKU 库位库存表');Object.defineProperty(picker,'files',{configurable:true,value:[file]});picker.dispatchEvent(new window.Event('change',{bubbles:true}));});expect(mocks.createCountTask).not.toHaveBeenCalled();
  await type(input('任务名称'),'H1 SKU1');await click('创建草稿任务');expect(mocks.createCountTask).toHaveBeenCalledWith('H1',expect.objectContaining({name:'H1 SKU1',rows:[rows[0]],skus:['SKU1'],sourceFile:'sample.xlsx'}));expect(mocks.countControl).not.toHaveBeenCalled();
+});
+it('orders area groups, previews excluded RT, creates a separate small-goods task and restores its scope on PDA',async()=>{
+ await act(async()=>root.unmount());localStorage.removeItem('wms-sku-count-selected:H1');Object.defineProperty(navigator,'userAgent',{configurable:true,value:'Desktop Chrome'});mocks.countManager.mockResolvedValue({manager:true,configured:true});
+ const rt={hall:'RT',location:'RT-001-2',sku:'SKU1',barcode:'',customer:'C',name:'商品甲',qty:4};
+ const stock=[{...rt,hall:'H1',location:'101-001-1'},{...rt,hall:'Halle2/2F',location:'M224-011-C',qty:3},{...rt,hall:'Halle3/2F',location:'M326-009-C',qty:2},{...rt,hall:'WS',location:'WS-1'},rt];
+ mocks.readCountFile.mockResolvedValue({rows:stock,file:'mixed.xlsx',hash:'a'.repeat(64)});mocks.createCountTask.mockResolvedValue({id:task.id});
+ root=createRoot(container);await act(async()=>root.render(<Page currentHall="H1"/>));
+ await act(async()=>{const picker=input('导入 SKU 库位库存表');Object.defineProperty(picker,'files',{configurable:true,value:[new window.File(['test'],'mixed.xlsx')]});picker.dispatchEvent(new window.Event('change',{bubbles:true}));});
+ const select=container.querySelector('select[aria-label="盘点库区"]') as HTMLSelectElement;
+ expect(Array.from(select.options).map(o=>o.value)).toEqual(['H1','H2','H3','SMALL_GOODS','AREA:WS']);expect(select.textContent).not.toContain('RT');
+ expect(container.textContent).toContain('退货暂存区，未纳入盘点');expect(container.querySelector('table')?.textContent).toContain('RT-001-2');
+ await act(async()=>{select.value='SMALL_GOODS';select.dispatchEvent(new window.Event('change',{bubbles:true}));});
+ await type(input('任务名称'),'Small goods');task.hall='SMALL_GOODS';task.plan.excludedReturns=[rt];await click('创建草稿任务');
+ expect(mocks.createCountTask).toHaveBeenCalledWith('SMALL_GOODS',expect.objectContaining({rows:[stock[1],stock[2],rt],skus:['SKU1']}));
+ await act(async()=>root.unmount());Object.defineProperty(navigator,'userAgent',{configurable:true,value:'Android PDA Chrome'});root=createRoot(container);await act(async()=>root.render(<Page currentHall="H1"/>));
+ expect((container.querySelector('select[aria-label="盘点库区"]') as HTMLSelectElement).value).toBe('SMALL_GOODS');expect(mocks.loadCountTask).toHaveBeenLastCalledWith('SMALL_GOODS',task.id);expect(container.textContent).toContain('RT-001-2');expect(input('导入 SKU 库位库存表')).toBeNull();
 });

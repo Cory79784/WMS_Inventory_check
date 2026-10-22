@@ -1,3 +1,4 @@
+import {validScope,orderedScopes} from '../../src/skuCount/areas';
 import type {Env} from '../types';
 import {isAuditManager,managerSession} from '../changeAuditAccess';
 import {buildCountPlan,needsIdentityPhoto,type CountPlan} from '../../src/skuCount/model';
@@ -37,7 +38,11 @@ export async function handleSkuCount(request:Request,env:Env):Promise<Response>{
  try{
   if(action==='manager')return managerSession(request,env,'/api/inventory/sku-count/');
   const manager=await isAuditManager(request,env);const manage=()=>{if(!manager)throw new ErrorResponse(403,'MANAGEMENT_REQUIRED');};
-  need(hall&&['H1','H2','H3'].includes(hall));
+  if(action==='scopes'&&request.method==='GET'){
+   const scopes=await env.DB.prepare("SELECT DISTINCT hall_id FROM sku_count_tasks WHERE status='PUBLISHED' OR ?=1").bind(manager?1:0).all<{hall_id:string}>();
+   return json({scopes:orderedScopes(scopes.results.map(r=>r.hall_id))});
+  }
+  need(validScope(hall));
   let token=request.headers.get('Cookie')?.split(';').map(s=>s.trim()).find(s=>s.startsWith('sku_count_device='))?.slice(17)||'';
   if(!/^[a-f0-9]{64}$/.test(token))token='';
   const deviceHeader:Record<string,string>={};
@@ -55,7 +60,7 @@ export async function handleSkuCount(request:Request,env:Env):Promise<Response>{
    if(request.method!=='POST')throw new ErrorResponse(405,'METHOD_NOT_ALLOWED');manage();
    const input=await body(request,2200000);need(str(input.id,80)&&/^[\w-]{8,80}$/.test(input.id)&&str(input.name,100)&&input.name.trim());
    need(Array.isArray(input.rows)&&input.rows.every((r:any)=>r&&typeof r==='object')&&Array.isArray(input.skus)&&input.skus.every((s:unknown)=>str(s,150)&&s));
-   let plan:CountPlan;try{plan=buildCountPlan(input.rows,hall as 'H1'|'H2'|'H3',input.skus,input.sourceFile,input.sourceHash);}catch(e){throw new ErrorResponse(400,(e as Error).message);}
+   let plan:CountPlan;try{plan=buildCountPlan(input.rows,hall,input.skus,input.sourceFile,input.sourceHash);}catch(e){throw new ErrorResponse(400,(e as Error).message);}
    const planJson=JSON.stringify(plan);if(new TextEncoder().encode(planJson).length>1800000)throw new ErrorResponse(413,'TASK_TOO_LARGE');
    const requestHash=await hash(JSON.stringify([hall,input.name.trim(),planJson]));
    const existing=await env.DB.prepare('SELECT request_hash FROM sku_count_tasks WHERE id=?').bind(input.id).first<{request_hash:string}>();
@@ -121,7 +126,7 @@ export async function handleSkuCount(request:Request,env:Env):Promise<Response>{
    if(lineId){const saved=await env.DB.prepare('SELECT result_json FROM sku_count_results WHERE task_id=? AND location_code=?').bind(id,location).first<{result_json:string}>();need(target.skus.some(s=>`book:${s.sku}`===lineId)||saved&&JSON.parse(saved.result_json).lines.some((l:any)=>l.id===lineId),'INVALID_LINE');}
    const existing=await env.DB.prepare('SELECT task_id,location_code,line_id FROM sku_count_photos WHERE id=?').bind(photoId).first<{task_id:string;location_code:string;line_id:string}>();if(existing){need(existing.task_id===id&&existing.location_code===location&&existing.line_id===lineId);return json({id:photoId,location,lineId});}
    const type=request.headers.get('Content-Type')||'';need(['image/jpeg','image/png','image/webp'].includes(type),'PHOTO_FORMAT');if(Number(request.headers.get('Content-Length')||0)>10*1024*1024)throw new ErrorResponse(413,'PHOTO_SIZE');const bytes=await request.arrayBuffer();need(bytes.byteLength>0&&bytes.byteLength<=10*1024*1024,'PHOTO_SIZE');
-   const key=`sku-count/${hall}/${id}/${photoId}`;await env.PHOTO_BUCKET.put(key,bytes,{httpMetadata:{contentType:type}});
+   const key=`sku-count/${encodeURIComponent(hall)}/${id}/${photoId}`;await env.PHOTO_BUCKET.put(key,bytes,{httpMetadata:{contentType:type}});
    const inserted=await env.DB.prepare(`INSERT OR IGNORE INTO sku_count_photos(id,task_id,location_code,line_id,object_key) SELECT ?,?,?,?,? WHERE ${guard}`).bind(photoId,id,location,lineId,key,...binding).run();
    if(!inserted.meta.changes){const retained=await env.DB.prepare('SELECT id FROM sku_count_photos WHERE id=? AND task_id=?').bind(photoId,id).first();if(!retained){await env.PHOTO_BUCKET.delete(key);throw new ErrorResponse(409,'PUBLICATION_CONFLICT');}}
    return json({id:photoId,location,lineId},201);

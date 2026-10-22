@@ -1,5 +1,15 @@
 import type { TranslationKey } from './zh';
 export const vi: Record<TranslationKey, string> = {
+  skuSmallGoods: "Hàng nhỏ (tầng 2)",
+  skuAreaGroup: "Khu kiểm kê",
+  skuReturnsExcluded: "Khu tạm hàng trả, không kiểm kê",
+  skuSourceRows: "Tệp có {rows} dòng tồn kho",
+  skuAreaSummary: "{rows} dòng · {locations} vị trí · {skus} SKU · Số lượng {qty}",
+  skuShowMore: "Hiện thêm",
+  skuInvalidRow: "Dòng Excel {row}: thiếu khu, vị trí hoặc SKU, hoặc khu không hợp lệ.",
+  skuInvalidQuantity: "Dòng Excel {row}: số lượng phải là số nguyên không âm.",
+  skuAmbiguousLocation: "Nhiều khu có cùng mã vị trí. Chọn vị trí đầy đủ trong tuyến.",
+
   skuDeleteConfirm: "Xóa quyền truy cập nhiệm vụ? Kết quả đã lưu vẫn xem được trên PC.",
   skuScopeEmptyConfirmed: "SKU đã chọn không còn hàng",
   skuMenu: "Kiểm kê SKU",

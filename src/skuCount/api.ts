@@ -9,6 +9,7 @@ async function call<T>(action:string,params:Record<string,string>={},options?:Re
 }
 const post=(data:unknown):RequestInit=>({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
 export interface CountSummary {id:string;name:string;lifecycle:CountTask['lifecycle'];publicationRevision:number;claimedBy:string|null;mine:number;sourceFile:string;total:number;completed:number;createdAt:string}
+export const listCountScopes=()=>call<{scopes:string[]}>('scopes');
 export const listCountTasks=(hallId:string,signal?:AbortSignal,archived=false)=>call<{tasks:CountSummary[]}>('tasks',{hallId,...(archived?{archived:'1'}:{})},{signal});
 export const loadCountTask=(hallId:string,taskId:string)=>call<CountTask>('task',{hallId,taskId});
 export const createCountTask=(hallId:string,payload:{id:string;name:string;rows:CountRow[];skus:string[];sourceFile:string;sourceHash:string})=>call<{id:string}>('tasks',{hallId},post(payload));
